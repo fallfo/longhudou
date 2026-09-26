@@ -96,6 +96,7 @@ async function waitFor(fn, ms, what){
   $(G, '#inNetName').value = '小明';
   click(G, $(G, '#btnAskJoin'));                 /* 主动点「加入房间」 */
   eq($(G, '#rowRoomCode').hidden, false, '点「加入房间」后才出现房号输入框');
+  eq($(G, '#rowCreate').hidden, true, '此时不该还显示「创建房间」按钮');
   $(G, '#inRoomCode').value = room;
   click(G, $(G, '#btnJoinRoom'));
   eq(syncing(G), true, '客人未拿到房主局面时，棋盘应为「同步中」状态');

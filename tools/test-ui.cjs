@@ -232,10 +232,11 @@ eq($('#metaA').textContent, '阵营未定', '新开一局阵营应重置');
 {
   eq($('#roomBar').hidden, true, '一开始不显示房间栏');
   eq($('#rowCreate').hidden, false, '未进房时显示「创建房间 / 加入房间」按钮');
-  eq($('#rowRoomCode').hidden, true, '一开始不应显示房号输入框（建房不问房号）');
+  eq($('#rowRoomCode').hidden, true, '默认不显示房号输入框（建房不问房号）');
 
   click($('#btnAskJoin'));
-  eq($('#rowRoomCode').hidden, false, '只有点了「加入房间」才出现房号输入框');
+  eq($('#rowRoomCode').hidden, false, '点「加入房间」后才出现房号输入框');
+  eq($('#rowCreate').hidden, true, '此时应把「创建房间」按钮收起来（避免先填房号再点创建）');
   input($('#inRoomCode'), 'ab12');
   eq($('#inRoomCode').value, 'AB12', '房号输入框应自动转大写并过滤非法字符');
   click($('#btnJoinRoom'));
@@ -244,6 +245,7 @@ eq($('#metaA').textContent, '阵营未定', '新开一局阵营应重置');
 
   click($('#btnCancelJoin'));
   eq($('#rowRoomCode').hidden, true, '点「取消」应收起房号输入框');
+  eq($('#rowCreate').hidden, false, '取消后「创建房间 / 加入房间」按钮应回来');
 
   click($('#board .card.back'));
   eq($$('#board .card.up').length, 1, '同屏模式照常可以翻牌');

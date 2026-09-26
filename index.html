@@ -1502,8 +1502,8 @@ var CARD_SETS = {"anime":{"name":"动漫版","ratio":0.7692,"art":{"D1":"data:im
     }
     $('rowViewers').hidden = viewers === 0;
     $('netViewers').textContent = viewers + ' 人';
-    /* 没进房间时显示「创建房间 / 加入房间」；只有点了「加入房间」才出现房号输入框 */
-    $('rowCreate').hidden = online;
+    /* 两个状态互斥：要么显示「创建房间 / 加入房间」按钮，要么显示房号输入框（避免先填房号再点创建） */
+    $('rowCreate').hidden = online || net.wantJoin;
     $('rowRoomCode').hidden = online || !net.wantJoin;
     $('roomNotice').textContent = net.notice || '';
 
@@ -1695,7 +1695,7 @@ var CARD_SETS = {"anime":{"name":"动漫版","ratio":0.7692,"art":{"D1":"data:im
   /* 平时只有两个按钮：建房不问房号；只有点「加入房间」才展开房号输入框 */
   $('btnCreateRoom').addEventListener('click', function(){ netStartHost(); });
   $('btnAskJoin').addEventListener('click', function(){
-    net.wantJoin = true;
+    net.wantJoin = true;                     /* 收起「创建房间」按钮，只留房号输入框 */
     net.notice = '输入房主给你的 6 位房间号，点「加入」（回车也行）';
     netRender();
     try { $('inRoomCode').focus(); } catch(e){}
