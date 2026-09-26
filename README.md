@@ -89,6 +89,33 @@ git push -u origin main
 
 > 小提示：如果不想在群里暴露 `index.html` 这个文件名也完全没关系，仓库根目录的 `index.html` 会被自动当作首页；`README.md` 和 `tools/` 不影响访问。
 
+### 本机已有的便携版 Git（这台机器上就这么推）
+
+这台机器没装系统级 Git，但 `D:\workspace\tools\git\` 里有一份便携版 MinGit（没进 PATH，用全路径调用即可）。
+`D:\workspace\longhudou` 已经初始化好并完成了首次提交（分支 `main`），只差推到 GitHub：
+
+```powershell
+$git = 'D:\workspace\tools\git\cmd\git.exe'
+Set-Location 'D:\workspace\longhudou'
+& $git remote add origin https://github.com/<你的用户名>/longhudou.git
+& $git push -u origin main
+# 然后再去仓库 Settings → Pages 把分支设成 main / (root)
+```
+
+推送要登录 GitHub：**GitHub 已不接受账号密码**，密码位置要填 **Personal Access Token**（https://github.com/settings/tokens 新建 classic token，勾 `repo` 权限）。
+便携版里自带 Git Credential Manager，也可以先跑一次 `& $git config --system credential.helper manager`，推送时会弹浏览器让你登录 GitHub。
+
+以后改动推送：
+
+```powershell
+$git = 'D:\workspace\tools\git\cmd\git.exe'
+Set-Location 'D:\workspace\longhudou'
+& $git add -A ; & $git commit -m "更新说明" ; & $git push
+```
+
+> 便携版的系统级配置已经顺手设好：`safe.directory`（否则会报 "dubious ownership"）、`core.autocrlf=false`（中文与换行不会被改坏）、提交身份 `longhudou <longhudou@example.com>`（占位）。
+> 想换成自己的身份：`& $git config --system user.name "你的名字"` 与 `& $git config --system user.email "你的邮箱"`，然后 `& $git commit --amend --reset-author`。
+
 ### 方案 B：直接把文件发群文件
 
 不想折腾托管时最省事：把 `index.html`（可改名成 `龙虎斗.html`）发到群文件。
