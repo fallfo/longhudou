@@ -217,6 +217,31 @@ eq($$('#board .card.back').length, 16, '新开一局应重新发 16 张暗牌');
 eq($$('#log li').length, 0, '新开一局应清空记录');
 eq($('#metaA').textContent, '阵营未定', '新开一局阵营应重置');
 
+/* ── 联机界面（不触网，只测结构与校验） ── */
+{
+  eq($$('#selMode option').length, 3, '模式下拉应有 3 项');
+  eq($('#selMode').value, 'local', '默认是同屏模式');
+  eq($('#roomBar').hidden, true, '同屏模式不显示房间栏');
+  eq($('#rowRoomCode').hidden, true, '同屏模式不显示房间号输入');
+
+  $('#selMode').value = 'join';
+  $('#selMode').dispatchEvent(new win.Event('change', { bubbles:true }));
+  eq($('#rowRoomCode').hidden, false, '选「加入房间」应显示房间号输入');
+  eq($('#roomBar').hidden, true, '还没加入时不显示房间栏');
+
+  input($('#inRoomCode'), 'AB');                    /* 位数不对 */
+  click($('#btnJoinRoom'));
+  ok($('#roomNotice').textContent.indexOf('6 位') >= 0, '房间号位数不对应提示：' + $('#roomNotice').textContent);
+  eq($('#btnUndo').disabled, true, '未联机时仍不应有可悔的步');
+
+  $('#selMode').value = 'local';
+  $('#selMode').dispatchEvent(new win.Event('change', { bubbles:true }));
+  eq($('#roomBar').hidden, true, '切回同屏应隐藏房间栏');
+  eq($$('#board .card.back').length, 16, '切回同屏应重开一局（16 张暗牌）');
+  click($('#board .card.back'));
+  eq($$('#board .card.up').length, 1, '切回同屏后仍可正常翻牌');
+}
+
 /* ── 页面无脚本报错 ── */
 eq(pageErrors.length, 0, '页面运行期间不应有脚本错误：' + pageErrors.join(' | '));
 
@@ -224,7 +249,10 @@ console.log('');
 if(failures.length){
   console.log('✗ 界面测试失败 ' + failures.length + ' 项（通过 ' + pass + ' 项）：');
   failures.forEach(f => console.log('   - ' + f));
-  process.exitCode = 1;
+  try { win.close(); } catch(e){}
+  process.exit(1);
 } else {
   console.log('✓ 界面测试全部通过：' + pass + ' 项断言（点击驱动 ' + actions + ' 手，吃子 ' + captures + ' 次）');
+  try { win.close(); } catch(e){}
+  process.exit(0);
 }

@@ -2,6 +2,8 @@
 tools/node_modules/
 tools/.npm-cache/
 tools/.engine.build.cjs
+tools/.net.build.cjs
+tools/.netlive.build.cjs
 tools/tiles/
 # 切图用的原画片（体积大，且是他人/AI 生成素材，不建议进公开仓库）
 sheet.jpg

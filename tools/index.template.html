@@ -212,6 +212,21 @@
   }
   .tag-d{color:#1d5c84;font-weight:700}
   .tag-t{color:#9c4a12;font-weight:700}
+
+  /* ── 联机 ── */
+  .mini{
+    font-family:inherit;font-size:12.5px;padding:6px 10px;border-radius:8px;cursor:pointer;
+    background:linear-gradient(180deg,#fffaf0,#f0e0c2);color:#43291a;border:1px solid rgba(91,58,34,.4)
+  }
+  .mini:active{background:#e9d7b4}
+  .roomcode{
+    font-family:Georgia,serif;font-size:20px;font-weight:700;letter-spacing:.18em;color:#7a3b12;
+    background:#fff6e2;border:1px dashed rgba(122,59,18,.5);border-radius:8px;padding:2px 10px
+  }
+  .roomcode.small{font-size:13px;letter-spacing:.02em;font-weight:400;border:0;background:transparent;color:#2b1d13}
+  .on{color:#1c7a4e;font-weight:700}
+  .off{color:#b3261e;font-weight:700}
+  .row input:disabled,.row select:disabled{opacity:.5}
 </style>
 </head>
 <body>
@@ -223,6 +238,42 @@
   </div>
 
   <div class="banner" id="banner"><span class="dot"></span><span id="bannerText">准备开始</span></div>
+
+  <div class="panel" id="netSetup">
+    <h3>对战方式</h3>
+    <div class="row">
+      <label for="selMode">模式</label>
+      <select id="selMode">
+        <option value="local">同屏双人（一台设备）</option>
+        <option value="host">创建房间（我当房主）</option>
+        <option value="join">加入房间（输房间号）</option>
+      </select>
+    </div>
+    <div class="row">
+      <label for="inNetName">我的昵称</label>
+      <input type="text" id="inNetName" maxlength="8" value="玩家" autocomplete="off">
+    </div>
+    <div class="row" id="rowRoomCode" hidden>
+      <label for="inRoomCode">房间号</label>
+      <input type="text" id="inRoomCode" maxlength="6" placeholder="6 位字母数字" autocomplete="off" spellcheck="false">
+      <button class="mini" id="btnJoinRoom" type="button">加入</button>
+    </div>
+    <div class="note" id="netHint">联机走公共 MQTT 中继（不用服务器）。规则由房主设定，联机时不能悔棋。</div>
+  </div>
+
+  <div class="panel" id="roomBar" hidden>
+    <h3>房间</h3>
+    <div class="row">
+      <label>房间号</label>
+      <span class="roomcode" id="roomCode">------</span>
+      <button class="mini" id="btnCopyRoom" type="button">复制</button>
+      <button class="mini" id="btnLeaveRoom" type="button">退出</button>
+    </div>
+    <div class="row"><label>连接</label><span id="netStatus">连接中…</span></div>
+    <div class="row"><label>对手</label><span id="netOpp">等待加入…</span></div>
+    <div class="row" id="rowViewers" hidden><label>观众</label><span id="netViewers">0 人</span></div>
+    <div class="note" id="roomNotice"></div>
+  </div>
 
   <div class="boardwrap">
     <div class="board" id="board" aria-label="龙虎斗棋盘"></div>
@@ -357,6 +408,16 @@
     <ul>
       <li>点暗牌＝翻牌；点自己的明牌＝选中（绿点可走、红圈可吃）；点目标格＝执行。</li>
       <li>再点一次已选中的牌，或点空白处＝取消选择。</li>
+    </ul>
+
+    <h4>联机对战（可选）</h4>
+    <ul>
+      <li>「对战方式」选 <b>创建房间（我当房主）</b> → 页面给你一个 <b>6 位房间号</b>，把它发给对手。</li>
+      <li>对手选 <b>加入房间</b> 并输入房间号即可进来；<b>第三个及以后进来的人是观众</b>，只能看不能动。</li>
+      <li>规则由<b>房主</b>设定（棋盘大小、斜走、王能不能吃对方最小牌、判和手数），对手那边的设置项会锁住。</li>
+      <li>联机时<b>不能悔棋</b>；只有房主能「新开一局」，重开后对手与观众会一起重置。</li>
+      <li>每一步都由房主用规则校验后广播，双方看到的局面始终一致；掉线会自动重连并补发局面。</li>
+      <li>联机走免费的公共 MQTT 中继（broker.emqx.io），<b>不需要服务器</b>；但它是<b>公共频道、不加密</b> —— 知道房间号的人理论上能看到这局棋、也可能发消息捣乱，所以只当消遣、别在房间里聊私事。</li>
     </ul>
 
     <h4>关于规则出处</h4>
@@ -638,6 +699,418 @@ function applyMove(state, from, to){
 /*==ENGINE_END==*/
 </script>
 
+<script id="net">
+/*==NET_START==*/
+/* ══════════ 联机：极简 MQTT over WebSocket（QoS0）+ 房主权威的房间会话 ══════════
+   设计要点：
+   · 不依赖 DOM，可在 Node 里用假中继或真 broker 做测试
+   · 房主（建房的人）持有唯一权威局面；客人只发“意图”，房主用规则引擎校验后广播快照
+   · 第三人及以后进房间自动成为观众：只收快照、不发意图
+   · 中继是公共 broker，公共频道明文；房间号 + secret 只用于隔离，不做加密
+   报文类型（JSON，键名尽量短）：
+     join    {k,t:'join', id, nm, r:'guest'|'viewer'}
+     welcome {k,t:'welcome', to, r, st, hid, hnm}
+     state   {k,t:'state', st, sq}
+     flip    {k,t:'flip', id, i}          move {k,t:'move', id, f, to}
+     reject  {k,t:'reject', to}           ping {k,t:'ping', id, nm, r}
+     bye     {k,t:'bye', id}              notice {k,t:'notice', text}
+*/
+
+var LHD_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   /* 去掉 0O1I 等易混字符 */
+function lhdRandomCode(n){
+  var out = '', i;
+  for(i = 0; i < n; i++) out += LHD_ALPHABET.charAt(Math.floor(Math.random() * LHD_ALPHABET.length));
+  return out;
+}
+function lhdClientId(){ return 'lhd-' + lhdRandomCode(10).toLowerCase(); }
+/* 房间口令由 6 位房间号确定性推导：这样对面只要输房间号就能进同一个主题，不用再传口令 */
+function lhdDeriveSecret(room){
+  var h = 2166136261, i, out = '';
+  for(i = 0; i < room.length; i++){ h ^= room.charCodeAt(i); h = (h * 16777619) >>> 0; }
+  for(i = 0; i < 8; i++){
+    out += LHD_ALPHABET.charAt((h >>> (i * 3)) % LHD_ALPHABET.length);
+    h = (h * 31 + 7 + i) >>> 0;
+  }
+  return out;
+}
+function lhdRoomTopic(room, secret){ return 'longhudou/v1/' + room + '/' + secret; }
+
+/* ── UTF-8 编解码（手写，避免依赖 TextEncoder，Node 与浏览器行为一致）── */
+function lhdUtf8Bytes(str){
+  var out = [], i, c, c2, cp;
+  for(i = 0; i < str.length; i++){
+    c = str.charCodeAt(i);
+    if(c < 0x80){ out.push(c); }
+    else if(c < 0x800){ out.push(0xc0 | (c >> 6), 0x80 | (c & 63)); }
+    else if(c < 0xd800 || c >= 0xe000){ out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63)); }
+    else {
+      c2 = str.charCodeAt(++i);
+      cp = 0x10000 + ((c - 0xd800) << 10) + (c2 - 0xdc00);
+      out.push(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 63), 0x80 | ((cp >> 6) & 63), 0x80 | (cp & 63));
+    }
+  }
+  return out;
+}
+function lhdUtf8Decode(bytes, start, len){
+  var out = '', i = start, end = start + len, b, cp;
+  while(i < end){
+    b = bytes[i++];
+    if(b < 0x80){ out += String.fromCharCode(b); }
+    else if(b < 0xe0){ out += String.fromCharCode(((b & 31) << 6) | (bytes[i++] & 63)); }
+    else if(b < 0xf0){
+      cp = ((b & 15) << 12) | ((bytes[i++] & 63) << 6) | (bytes[i++] & 63);
+      out += String.fromCharCode(cp);
+    } else {
+      cp = ((b & 7) << 18) | ((bytes[i++] & 63) << 12) | ((bytes[i++] & 63) << 6) | (bytes[i++] & 63);
+      cp -= 0x10000;
+      out += String.fromCharCode(0xd800 + (cp >> 10), 0xdc00 + (cp & 1023));
+    }
+  }
+  return out;
+}
+
+/* ── MQTT 3.1.1 报文 ── */
+function lhdEncLen(n){
+  var out = [], b;
+  do { b = n % 128; n = Math.floor(n / 128); if(n > 0) b |= 0x80; out.push(b); } while(n > 0);
+  return out;
+}
+function lhdStrField(s){ var b = lhdUtf8Bytes(s); return [(b.length >> 8) & 255, b.length & 255].concat(b); }
+function lhdFixed(type, flags, body){ return new Uint8Array([(type << 4) | flags].concat(lhdEncLen(body.length), body)); }
+function lhdConnectPacket(clientId, keepalive){
+  var body = [0x00, 0x04, 0x4d, 0x51, 0x54, 0x54, 0x04, 0x02, (keepalive >> 8) & 255, keepalive & 255]
+    .concat(lhdStrField(clientId));
+  return lhdFixed(1, 0, body);
+}
+function lhdSubscribePacket(topic, pid){
+  return lhdFixed(8, 2, [pid >> 8, pid & 255].concat(lhdStrField(topic), [0]));
+}
+function lhdPublishPacket(topic, payload){
+  return lhdFixed(3, 0, lhdStrField(topic).concat(lhdUtf8Bytes(payload)));
+}
+function lhdPingPacket(){ return new Uint8Array([0xc0, 0x00]); }
+function lhdDisconnectPacket(){ return new Uint8Array([0xe0, 0x00]); }
+function lhdParsePacket(buf){
+  if(!buf || buf.length < 2) return null;
+  var type = buf[0] >> 4;
+  var i = 1, mult = 1, len = 0, b;          /* 变量长度字段从第 2 个字节（索引 1）开始 */
+  do { b = buf[i++]; len += (b & 127) * mult; mult *= 128; } while(b & 128);
+  if(type === 3){
+    var tlen = (buf[i] << 8) | buf[i + 1]; i += 2;
+    var topic = lhdUtf8Decode(buf, i, tlen); i += tlen;
+    return { type:3, topic:topic, payload:lhdUtf8Decode(buf, i, buf.length - i) };
+  }
+  if(type === 2) return { type:2, rc:buf[i + 1] };
+  return { type:type };
+}
+
+/* ── 客户端：自动重连 + 备用中继轮换 ── */
+var LHD_BROKERS = [
+  { url:'wss://broker.emqx.io:8084/mqtt', name:'EMQX' },
+  { url:'wss://broker.hivemq.com:8884/mqtt', name:'HiveMQ' },
+  { url:'wss://test.mosquitto.org:8081/mqtt', name:'Mosquitto' }
+];
+function lhdMqttClient(cfg){
+  var topics = [], ws = null, brokerIdx = 0, connected = false, stopped = false;
+  var retry = 0, retryTimer = null, connTimer = null, keepTimer = null, pingId = 1;
+  var self = { broker:'', connected:false };
+
+  function log(msg){ if(cfg.onLog) cfg.onLog(msg); }
+  function status(){ if(cfg.onStatus) cfg.onStatus({ connected:connected, broker:self.broker }); }
+
+  function clearTimers(){
+    if(retryTimer){ clearTimeout(retryTimer); retryTimer = null; }
+    if(connTimer){ clearTimeout(connTimer); connTimer = null; }
+    if(keepTimer){ clearInterval(keepTimer); keepTimer = null; }
+  }
+  function scheduleRetry(){
+    if(stopped) return;
+    clearTimers();
+    connected = false; self.connected = false; status();
+    brokerIdx = (brokerIdx + 1) % LHD_BROKERS.length;      /* 换一个中继再试 */
+    retry = Math.min(retry + 1, 6);
+    var delay = Math.min(1000 * Math.pow(1.8, retry - 1), 15000);
+    retryTimer = setTimeout(open, delay);
+  }
+  function open(){
+    if(stopped) return;
+    var br = LHD_BROKERS[brokerIdx];
+    self.broker = br.name;
+    var sock;
+    try { sock = new WebSocket(br.url, 'mqtt'); } catch(e){ return scheduleRetry(); }
+    sock.binaryType = 'arraybuffer';
+    ws = sock;
+    connTimer = setTimeout(function(){ try { sock.close(); } catch(e){} scheduleRetry(); }, 9000);
+    sock.onopen = function(){
+      try { sock.send(lhdConnectPacket(lhdClientId(), 45)); } catch(e){ return scheduleRetry(); }
+    };
+    sock.onmessage = function(ev){
+      var buf = new Uint8Array(ev.data), p = lhdParsePacket(buf);
+      if(!p) return;
+      if(p.type === 2){                                     /* CONNACK */
+        if(p.rc !== 0){ log('中继拒绝连接（rc=' + p.rc + '）'); return scheduleRetry(); }
+        clearTimers();
+        connected = true; self.connected = true; retry = 0;
+        for(var i = 0; i < topics.length; i++) sock.send(lhdSubscribePacket(topics[i], ++pingId));
+        keepTimer = setInterval(function(){
+          if(connected && ws && ws.readyState === 1) ws.send(lhdPingPacket());
+        }, 25000);
+        status();
+        if(cfg.onReady) cfg.onReady(self.broker);
+      } else if(p.type === 3){
+        if(cfg.onMessage) cfg.onMessage(p.topic, p.payload);
+      }
+    };
+    sock.onclose = function(){ if(!stopped) scheduleRetry(); };
+    sock.onerror = function(){ /* onclose 会跟着触发 */ };
+  }
+
+  self.connect = function(list){
+    topics = list || topics;
+    stopped = false; retry = 0;
+    open();
+  };
+  self.subscribe = function(topic){
+    if(topics.indexOf(topic) < 0) topics.push(topic);
+    if(connected && ws && ws.readyState === 1) ws.send(lhdSubscribePacket(topic, ++pingId));
+  };
+  self.publish = function(topic, text){
+    if(connected && ws && ws.readyState === 1){ ws.send(lhdPublishPacket(topic, text)); return true; }
+    return false;
+  };
+  self.close = function(){
+    stopped = true; clearTimers();
+    try { if(ws && ws.readyState === 1) ws.send(lhdDisconnectPacket()); ws && ws.close(); } catch(e){}
+    connected = false; self.connected = false; status();
+  };
+  return self;
+}
+
+/* ── 快照（把局面压成短数组，减少报文体积）── */
+function lhdSnapshot(st){
+  var cells = [], i, c;
+  for(i = 0; i < st.total; i++){
+    c = st.cells[i];
+    cells.push(c ? [c.cardId, c.up ? 1 : 0] : 0);
+  }
+  return {
+    n:st.n, dg:st.diagonal ? 1 : 0, ta:st.tigerEatsAll ? 1 : 0, kw:st.kingEatsWeakest ? 1 : 0,
+    nl:st.noCaptureLimit | 0, cells:cells, tn:st.turn, sa:st.sideA, sb:st.sideB,
+    cp:{ A:st.captured.A.slice(), B:st.captured.B.slice() },
+    mv:st.moves, sc:st.sinceCapture, lg:st.log.slice(-30), ov:st.over,
+    nm:{ A:st.names.A, B:st.names.B }
+  };
+}
+function lhdRestore(sn){
+  if(!sn || typeof sn !== 'object') return null;
+  var n = sn.n | 0;
+  if(n < 3 || n > 12) return null;
+  if(!Array.isArray(sn.cells) || sn.cells.length !== n * n) return null;
+  if(sn.tn !== 'A' && sn.tn !== 'B') return null;
+  var cells = [], seen = {}, i, e, id;
+  for(i = 0; i < sn.cells.length; i++){
+    e = sn.cells[i];
+    if(e === 0 || e === null || e === undefined){ cells.push(null); continue; }
+    if(!Array.isArray(e) || e.length !== 2) return null;
+    id = e[0];
+    if(!CARD_MAP[id] || seen[id]) return null;
+    seen[id] = 1;
+    cells.push({ cardId:id, up:!!e[1] });
+  }
+  var cp = sn.cp && Array.isArray(sn.cp.A) && Array.isArray(sn.cp.B) ? sn.cp : { A:[], B:[] };
+  var okCap = function(list){ for(var k = 0; k < list.length; k++) if(!CARD_MAP[list[k]]) return false; return true; };
+  if(!okCap(cp.A) || !okCap(cp.B)) return null;
+  return {
+    n:n, total:n * n,
+    diagonal:!!sn.dg, tigerEatsAll:!!sn.ta, kingEatsWeakest:!!sn.kw,
+    noCaptureLimit:sn.nl | 0, sinceCapture:sn.sc | 0,
+    cells:cells, turn:sn.tn,
+    sideA:(sn.sa === 'D' || sn.sa === 'T') ? sn.sa : null,
+    sideB:(sn.sb === 'D' || sn.sb === 'T') ? sn.sb : null,
+    captured:{ A:cp.A.slice(), B:cp.B.slice() },
+    moves:sn.mv | 0,
+    log:Array.isArray(sn.lg) ? sn.lg.slice(-30) : [],
+    over:sn.ov || null,
+    names:{ A:(sn.nm && sn.nm.A) || '玩家1', B:(sn.nm && sn.nm.B) || '玩家2' }
+  };
+}
+
+/* ── 房间会话：房主权威 ── */
+function lhdSession(cfg){
+  var s = {
+    role:cfg.role, room:cfg.room, secret:cfg.secret, id:cfg.id, name:cfg.name || '玩家',
+    state:null, hostId:null, hostName:'', guestId:null,
+    peers:{}, seq:0, lastPing:0, seqSeen:-1, lastBroadcast:0, pending:null
+  };
+  function send(obj){ obj.k = s.secret; cfg.send(JSON.stringify(obj)); }
+  function notice(text){ if(cfg.onNotice) cfg.onNotice(text); }
+  function pushPeers(){ if(cfg.onPeers) cfg.onPeers(peerList()); }
+  function peerList(){
+    var out = [], id;
+    for(id in s.peers){
+      if(!Object.prototype.hasOwnProperty.call(s.peers, id)) continue;
+      out.push({ id:id, name:s.peers[id].name, role:s.peers[id].role, online:s.peers[id].online !== false, self:id === s.id });
+    }
+    return out;
+  }
+  function touch(id, nm, r){
+    if(!id || id === s.id) return;
+    var p = s.peers[id];
+    if(!p){ p = s.peers[id] = { name:nm || '对手', role:r || 'guest' }; }
+    if(nm) p.name = nm;
+    if(r) p.role = r;
+    p.last = Date.now(); p.online = true;
+    pushPeers();
+  }
+
+  /* 房主：把权威局面广播出去 */
+  s.publishState = function(){
+    s.seq++;
+    s.lastBroadcast = Date.now();
+    send({ t:'state', st:lhdSnapshot(s.state), sq:s.seq });
+  };
+  s.hostInit = function(engineState){
+    s.state = engineState; s.hostId = s.id; s.hostName = s.name;
+    s.publishState();
+  };
+  s.join = function(){
+    send({ t:'join', id:s.id, nm:s.name, r:s.role === 'viewer' ? 'viewer' : 'guest' });
+  };
+  s.leave = function(){ send({ t:'bye', id:s.id }); };
+
+  /* 本地操作入口：房主直接落子并广播；客人只发意图（未确认会自动重发）；观众不能动 */
+  function sendIntent(action){
+    var msg = { t:(action.a === 'flip') ? 'flip' : 'move', id:s.id, sq:(s.state ? s.state.moves : -1) };
+    if(action.a === 'flip') msg.i = action.i;
+    else { msg.f = action.from; msg.to = action.to; }
+    send(msg);
+  }
+  s.act = function(action){
+    if(s.role === 'viewer') return { ok:false, error:'观战中不能操作' };
+    if(s.role === 'guest'){
+      s.pending = { action:action, at:Date.now(), tries:1 };
+      sendIntent(action);
+      return { ok:true, pending:true };
+    }
+    /* host */
+    var r = (action.a === 'flip') ? applyFlip(s.state, action.i) : applyMove(s.state, action.from, action.to);
+    if(r.ok){ s.publishState(); }
+    return r;
+  };
+  s.canAct = function(){
+    if(!s.state || s.state.over) return false;
+    if(s.role === 'host') return s.state.turn === 'A';
+    if(s.role === 'guest') return s.state.turn === 'B';
+    return false;
+  };
+  s.onMessage = function(text){
+    var m;
+    try { m = JSON.parse(text); } catch(e){ return; }
+    if(!m || m.k !== s.secret) return;
+    if(m.id === s.id) return;              /* 真实 broker 会把自己发的消息回显给自己，直接忽略 */
+    if(m.id) touch(m.id, m.nm, m.r);
+    if(m.t === 'ping'){ return; }
+
+    if(s.role === 'host'){
+      if(m.t === 'join'){
+        var r = 'viewer';
+        if(!s.guestId){ s.guestId = m.id; r = 'guest'; }
+        else if(s.guestId === m.id){ r = 'guest'; }
+        s.peers[m.id] = { name:m.nm || '玩家', role:r, last:Date.now(), online:true };
+        if(r === 'guest' && s.state && m.nm) s.state.names.B = m.nm;   /* 对手昵称写进局面，双方显示一致 */
+        send({ t:'welcome', to:m.id, r:r, st:lhdSnapshot(s.state), hid:s.id, hnm:s.name });
+        notice((m.nm || '玩家') + (r === 'guest' ? ' 加入了房间' : ' 进来观战'));
+        pushPeers();
+        s.publishState();                       /* 让新来的观众立刻拿到局面 */
+      } else if(m.t === 'flip' || m.t === 'move'){
+        if(m.id !== s.guestId) return;                       /* 只有坐着的对手能走子 */
+        /* 不是对手的回合 / 意图已过期：说明对方看到的局面旧了，直接补发一份最新局面，让它自愈 */
+        if(!s.state || s.state.turn !== 'B' ||
+           (typeof m.sq === 'number' && m.sq !== s.state.moves)){
+          s.publishState();
+          return;
+        }
+        var res = (m.t === 'flip') ? applyFlip(s.state, m.i) : applyMove(s.state, m.f, m.to);
+        if(res.ok){ s.publishState(); if(cfg.onState) cfg.onState(s.state); }
+        else { send({ t:'reject', to:m.id }); }
+      } else if(m.t === 'bye'){
+        if(m.id === s.guestId){ s.guestId = null; }
+        delete s.peers[m.id];
+        notice((m.nm || '对手') + ' 离开了房间');
+        pushPeers();
+      }
+      return;
+    }
+
+    /* 客人 / 观众 */
+    if(m.t === 'welcome' && m.to === s.id){
+      s.role = m.r || s.role;
+      s.hostId = m.hid; s.hostName = m.hnm || '房主';
+      if(m.hid){ s.peers[m.hid] = { name:m.hnm || '房主', role:'host', last:Date.now(), online:true }; }
+      var st = lhdRestore(m.st);
+      if(st){ s.state = st; s.pending = null; if(cfg.onState) cfg.onState(s.state, { fresh:true }); }
+      if(cfg.onRole) cfg.onRole(s.role);
+      pushPeers();
+      return;
+    }
+    if(m.t === 'state'){
+      if(typeof m.sq === 'number'){
+        if(m.sq <= s.seqSeen) return;            /* 忽略过期快照 */
+        s.seqSeen = m.sq;
+      }
+      var st2 = lhdRestore(m.st);
+      if(st2){ s.state = st2; s.pending = null; if(cfg.onState) cfg.onState(s.state); }
+      return;
+    }
+    if(m.t === 'reject' && m.to === s.id){ s.pending = null; if(cfg.onReject) cfg.onReject(); return; }
+    if(m.t === 'notice'){ notice(m.text); return; }
+    if(m.t === 'bye'){
+      delete s.peers[m.id];
+      if(m.id === s.hostId) notice('房主已离开房间');
+      pushPeers();
+      return;
+    }
+  };
+  /* 心跳 + 在线判定 + 未确认意图重发（由界面每秒调用一次） */
+  s.tick = function(){
+    var now = Date.now();
+    if(now - s.lastPing > 8000){
+      s.lastPing = now;
+      send({ t:'ping', id:s.id, nm:s.name, r:s.role === 'viewer' ? 'viewer' : 'guest' });
+    }
+    /* 房主每 15 秒补发一次局面：QoS0 下万一最后一条快照丢了，也能自动收敛（终局后也补发） */
+    if(s.role === 'host' && s.state && now - (s.lastBroadcast || 0) > 15000){
+      s.publishState();
+    }
+    /* QoS0 下意图可能丢包：1.2 秒没等到新快照就重发，最多 4 次 */
+    var pend = s.pending;
+    if(pend && now - pend.at > 1200){
+      if(pend.tries < 4){
+        pend.tries++;
+        pend.at = now;
+        sendIntent(pend.action);              /* 注意：这一步可能同步收到确认并把 s.pending 清空 */
+        if(pend.tries >= 4){
+          if(cfg.onNotice) cfg.onNotice('没收到房主确认，请检查网络后重试');
+          s.pending = null;
+        }
+      } else {
+        s.pending = null;
+      }
+    }
+    var changed = false, id;
+    for(id in s.peers){
+      if(!Object.prototype.hasOwnProperty.call(s.peers, id)) continue;
+      var on = (now - (s.peers[id].last || 0)) < 25000;
+      if(on !== s.peers[id].online){ s.peers[id].online = on; changed = true; }
+    }
+    if(changed) pushPeers();
+  };
+  s.peers = {};
+  return s;
+}
+/*==NET_END==*/
+</script>
+
 <script id="art">
 /* 牌面插画：上面那张画片的 16 张卡图，切成小图后转 base64 内嵌，保持「单文件、离线可玩」。
    键名 = 牌 id（D1..D8 为龙 1-8，T1..T8 为虎 9-16）。由 tools/slice-sheet.ps1 生成。 */
@@ -677,6 +1150,10 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
     var s = settings();
     state = createGame(s);
     history = []; sel = null; anim = null;
+    if(net.session && net.role === 'host'){
+      state.names.A = netMyName();
+      net.session.hostInit(state);         /* 房主重开一局：广播给对手和观众 */
+    }
     render();
   }
 
@@ -689,6 +1166,16 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
   }
 
   function doFlip(idx){
+    if(net.session){                       /* 联机：房主直接落子并广播，客人只发意图 */
+      var rn = net.session.act({ a:'flip', i:idx });
+      if(rn.ok){
+        if(net.role === 'guest'){ net.notice = '已发送，等待房主确认…'; }
+        else { anim = { idx:idx, type:'flip' }; }
+        sel = null;
+        render();
+      } else { flash(idx); }
+      return;
+    }
     pushHistory();
     var r = applyFlip(state, idx);
     if(!r.ok){ history.pop(); flash(idx); return; }
@@ -698,6 +1185,16 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
   }
 
   function doMove(from, to){
+    if(net.session){
+      var rn = net.session.act({ a:'move', from:from, to:to });
+      if(rn.ok){
+        if(net.role === 'guest'){ net.notice = '已发送，等待房主确认…'; }
+        else { anim = { idx:to, type:rn.capture ? 'cap' : 'move' }; }
+        sel = null;
+        render();
+      } else { flash(from); }
+      return;
+    }
     pushHistory();
     var r = applyMove(state, from, to);
     if(!r.ok){ history.pop(); flash(from); return; }
@@ -777,7 +1274,7 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
     renderStatus();
     renderPlayers();
     renderLog();
-    updateButtons();
+    netRender();
     syncSize();                       /* 立刻算一次，比例与格子尺寸不用等下一帧 */
     requestAnimationFrame(syncSize);  /* 布局稳定后再校准一次 */
   }
@@ -857,7 +1354,9 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
   }
 
   function updateButtons(){
-    $('btnUndo').disabled = history.length === 0;
+    var online = !!net.session;
+    $('btnUndo').disabled = history.length === 0 || online;      /* 联机禁悔棋 */
+    $('btnNew').disabled = online && net.role !== 'host';        /* 联机时只有房主能重开 */
   }
 
   function syncSize(){
@@ -876,12 +1375,124 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
     if(w > 0) boardEl.style.setProperty('--cs', w + 'px');
   }
 
+  /* ── 联机 ── */
+  var net = { mode:'local', role:null, room:null, secret:null, client:null, session:null, peers:[], status:'', notice:'' };
+
+  function netMyName(){ return ($('inNetName').value || '玩家').slice(0, 8); }
+
+  function netRender(){
+    var online = !!net.session;
+    $('roomBar').hidden = !online;
+    $('roomCode').textContent = net.room || '------';
+    $('netStatus').textContent = net.status || (online ? '连接中…' : '');
+    var opp = null, viewers = 0, i;
+    for(i = 0; i < net.peers.length; i++){
+      if(net.peers[i].role === 'viewer') viewers++;
+      else if(net.peers[i].role === 'guest' || net.peers[i].role === 'host') opp = net.peers[i];
+    }
+    if(online){
+      if(net.role === 'viewer'){
+        $('netOpp').innerHTML = '<span class="on">观战中</span> · 只能看不能动';
+      } else if(opp){
+        $('netOpp').innerHTML = opp.name + (opp.online ? ' <span class="on">在线</span>' : ' <span class="off">掉线</span>');
+      } else {
+        $('netOpp').textContent = (net.role === 'host') ? '等待对手加入…' : '等待房主…';
+      }
+    }
+    $('rowViewers').hidden = viewers === 0;
+    $('netViewers').textContent = viewers + ' 人';
+    $('roomNotice').textContent = net.notice || '';
+    var lock = online && net.role !== 'host';
+    ['selSize','chkDiag','chkTiger','selKing','selDraw','inNameA','inNameB'].forEach(function(id){
+      var el = $(id);
+      if(el) el.disabled = lock;
+    });
+    updateButtons();
+  }
+
+  function netTeardown(silent){
+    if(net.session && !silent){ try { net.session.leave(); } catch(e){} }
+    if(net.client){ try { net.client.close(); } catch(e){} }
+    net.session = null; net.client = null;
+    net.mode = 'local'; net.role = null; net.room = null; net.secret = null;
+    net.peers = []; net.status = ''; net.notice = '';
+    if(!silent){
+      $('selMode').value = 'local';
+      $('rowRoomCode').hidden = true;
+    }
+    netRender();
+  }
+
+  function netOnState(st){
+    state = st;               /* 房主：就是同一个权威对象；客人/观众：房主发来的快照 */
+    history = [];             /* 联机不悔棋 */
+    sel = null;
+    render();
+  }
+
+  function netConnect(){
+    var room = net.room, secret = net.secret, topic = lhdRoomTopic(room, secret);
+    net.client = lhdMqttClient({
+      onStatus: function(info){
+        net.status = info.connected ? ('已连接 · ' + info.broker) : '连接中…（会自动重试）';
+        netRender();
+      },
+      onMessage: function(tp, payload){ if(net.session && tp === topic) net.session.onMessage(payload); },
+      onReady: function(){
+        if(net.mode === 'host'){ net.session.hostInit(state); net.notice = '房间已开好，把房间号发给对手'; }
+        else { net.session.join(); net.notice = '已进入房间，等房主发来局面…'; }
+        netRender();
+      }
+    });
+    net.session = lhdSession({
+      role: net.mode === 'host' ? 'host' : 'guest',
+      room: room, secret: secret, id: lhdClientId(), name: netMyName(),
+      send: function(text){ net.client.publish(topic, text); },
+      onState: netOnState,
+      onNotice: function(t){ net.notice = t; netRender(); },
+      onPeers: function(list){ net.peers = list; netRender(); },
+      onRole: function(r){ net.role = r; netRender(); },
+      onReject: function(){ net.notice = '房主判定这一步不合法（局面已自动校准）'; netRender(); }
+    });
+    net.client.connect([topic]);
+    netRender();
+  }
+
+  function netStartHost(){
+    netTeardown(true);
+    net.mode = 'host'; net.role = 'host';
+    net.room = lhdRandomCode(6);
+    net.secret = lhdDeriveSecret(net.room);
+    state = createGame(settings());
+    state.names.A = netMyName();
+    history = []; sel = null;
+    net.notice = '把房间号发给对手，他输入后即可进来（也可以先自己翻牌）';
+    netConnect();
+    render();
+  }
+
+  function netStartJoin(){
+    var code = ($('inRoomCode').value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if(code.length !== 6){ net.notice = '房间号应为 6 位'; netRender(); return; }
+    netTeardown(true);
+    net.mode = 'join'; net.role = 'guest';
+    net.room = code; net.secret = lhdDeriveSecret(code);
+    net.notice = '正在进入 ' + code + ' …';
+    history = []; sel = null;
+    netConnect();
+    render();
+  }
+
   /* ── 交互 ── */
   boardEl.addEventListener('click', function(e){
     var cellEl = e.target.closest ? e.target.closest('.cell') : null;
     if(!cellEl) return;
     var i = parseInt(cellEl.dataset.i, 10);
     if(state.over) return;
+    if(net.session && !net.session.canAct()){        /* 不是你的回合 / 观战：不能动 */
+      if(net.role === 'viewer'){ net.notice = '观战中只能看'; netRender(); }
+      return;
+    }
 
     var cell = state.cells[i];
     var side = playerSide(state, state.turn);
@@ -932,6 +1543,29 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
 
   window.addEventListener('resize', syncSize);
   window.addEventListener('orientationchange', function(){ setTimeout(syncSize, 200); });
+
+  /* ── 联机相关控件 ── */
+  $('selMode').addEventListener('change', function(){
+    var m = $('selMode').value;
+    $('rowRoomCode').hidden = (m !== 'join');
+    if(m === 'host'){ netStartHost(); }
+    else if(m === 'join'){ net.notice = '输入房主给你的 6 位房间号，点「加入」'; netRender(); }
+    else { netTeardown(); newGame(); }
+  });
+  $('btnJoinRoom').addEventListener('click', netStartJoin);
+  $('btnLeaveRoom').addEventListener('click', function(){ netTeardown(); newGame(); });
+  $('btnCopyRoom').addEventListener('click', function(){
+    var text = net.room || '';
+    try {
+      if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text);
+    } catch(e){}
+    net.notice = '房间号：' + text;
+    netRender();
+  });
+  setInterval(function(){ if(net.session) net.session.tick(); }, 1000);
+  window.addEventListener('beforeunload', function(){
+    if(net.session){ try { net.session.leave(); } catch(e){} }
+  });
 
   newGame();
 })();
