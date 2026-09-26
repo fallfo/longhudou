@@ -20,6 +20,9 @@ $sheet = if($env:LONGHUDOU_SHEET){ $env:LONGHUDOU_SHEET } else { Join-Path $root
 $outDir = if($env:LONGHUDOU_OUT){ $env:LONGHUDOU_OUT } else { Join-Path $root 'tools\tiles' }
 $gapFrac = if($env:LONGHUDOU_GAP){ [double]$env:LONGHUDOU_GAP } else { 0.94 }
 $targetW = if($env:LONGHUDOU_W){ [int]$env:LONGHUDOU_W } else { 180 }
+$quality = if($env:LONGHUDOU_Q){ [int]$env:LONGHUDOU_Q } else { 78 }
+# 背景亮度下限：白底画片用 232，米黄底老画片用 190
+$TH = if($env:LONGHUDOU_TH){ [int]$env:LONGHUDOU_TH } else { 232 }
 $layout = if($env:LONGHUDOU_LAYOUT){ $env:LONGHUDOU_LAYOUT -split ',' | ForEach-Object { [int]$_.Trim() } }
           else { 1..16 }
 
@@ -38,7 +41,6 @@ $stride = $d.Stride
 $bytes = New-Object byte[] ($stride * $h)
 [System.Runtime.InteropServices.Marshal]::Copy($d.Scan0, $bytes, 0, $bytes.Length)
 $bmp.UnlockBits($d)
-$TH = 232                                  # 背景（白/米黄）亮度下限
 
 # ---- 行：整行浅色比例 ----
 $rl = [double[]]::new($h)
@@ -116,7 +118,7 @@ if(($rowBands.Count -ne 4) -or ($colBands.Count -ne 4)){
 
 $codec = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq 'image/jpeg' }
 $ep = New-Object System.Drawing.Imaging.EncoderParameters(1)
-$ep.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter([System.Drawing.Imaging.Encoder]::Quality, [int64]78)
+$ep.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter([System.Drawing.Imaging.Encoder]::Quality, [int64]$quality)
 
 # 统一宽高比（只往背景补，不裁画面）
 $wSum = 0; for($c = 0; $c -lt 4; $c++){ $wSum += ($colBands[$c][1] - $colBands[$c][0] + 1) }

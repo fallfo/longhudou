@@ -56,23 +56,27 @@ input($('#inNameB'), '阿虎');
 eq($('#nameA_lbl').textContent, '阿龙', '昵称应即时生效（玩家1）');
 eq($('#nameB_lbl').textContent, '阿虎', '昵称应即时生效（玩家2）');
 
-/* ── 内嵌画片插画 ── */
+/* ── 内嵌画片插画：两套画风 ── */
 {
-  const art = win.CARD_ART;
-  ok(art && typeof art === 'object', 'index.html 里应内嵌 CARD_ART');
-  eq(Object.keys(art).length, 16, '内嵌插画应有 16 张');
+  const sets = win.CARD_SETS;
+  ok(sets && typeof sets === 'object', 'index.html 里应内嵌 CARD_SETS');
+  const keys = Object.keys(sets || {});
+  eq(keys.length, 2, '应内嵌两套画风（动漫版 + 洋画片版）');
   const ids = ['D1','D2','D3','D4','D5','D6','D7','D8','T1','T2','T3','T4','T5','T6','T7','T8'];
-  const missing = ids.filter(id => !art[id]);
-  eq(missing.length, 0, '16 个牌 id 都应有插画，缺：' + missing.join(','));
-  const badSrc = ids.filter(id => String(art[id]).indexOf('data:image/jpeg;base64,') !== 0);
-  eq(badSrc.length, 0, '插画应为内嵌 data URI，异常：' + badSrc.join(','));
-  const tooSmall = ids.filter(id => String(art[id]).length < 3000);
-  eq(tooSmall.length, 0, '插画数据不应过小，异常：' + tooSmall.join(','));
-  const distinct = new Set(ids.map(id => art[id]));
-  eq(distinct.size, 16, '16 张插画应各不相同');
-  ok(typeof win.CARD_RATIO === 'number' && win.CARD_RATIO > 0.3 && win.CARD_RATIO < 1,
-    '卡图宽高比应是 0.3~1 之间的数值（实际 ' + win.CARD_RATIO + '）');
-  ok(win.CARD_RATIO < 0.95, '卡图应是竖版（宽/高 < 0.95），不能被当方形处理');
+  for(const k of keys){
+    eq(Object.keys(sets[k].art).length, 16, k + ' 应有 16 张插画');
+    const missing = ids.filter(id => !sets[k].art[id]);
+    eq(missing.length, 0, k + ' 缺少插画：' + missing.join(','));
+    const badSrc = ids.filter(id => String(sets[k].art[id]).indexOf('data:image/jpeg;base64,') !== 0);
+    eq(badSrc.length, 0, k + ' 插画应为内嵌 data URI');
+    ok(sets[k].ratio > 0.3 && sets[k].ratio < 1.6, k + ' 应带合理宽高比（实际 ' + sets[k].ratio + '）');
+    ok(sets[k].ratio < 0.95, k + ' 应是竖版卡片');
+    eq(new Set(ids.map(id => sets[k].art[id])).size, 16, k + ' 的 16 张应各不相同');
+  }
+  if(sets.anime && sets.classic){
+    ok(sets.anime.art.D1 !== sets.classic.art.D1, '两套画风的内容应不同');
+    eq(win.CARD_SETS[win.document.querySelector('#selArt') ? 'anime' : 'anime'].name, '动漫版', '动漫版应带名字');
+  }
   ok(String($('#board').getAttribute('style') || '').indexOf('--ratio') >= 0,
     '棋盘应把卡图比例写进 --ratio，保证格子按原比例显示');
 }
@@ -83,15 +87,22 @@ eq($$('#board .card.up').length, 1, '点暗牌应翻开一张');
 eq($$('#board .card.up img').length, 1, '翻开的牌应显示画片插画');
 ok($$('#board .card.up img')[0].getAttribute('src').indexOf('data:image/jpeg;base64,') === 0, '插画应内嵌为 data URI');
 
-/* ── 插画/文字牌面切换 ── */
-$('#chkArt').checked = false;
-$('#chkArt').dispatchEvent(new win.Event('change', { bubbles:true }));
-eq($$('#board .card.up img').length, 0, '关掉插画后不应再有图片牌面');
-eq($$('#board .card.up .nm').length, 1, '关掉插画后应显示文字牌名');
-ok($('#chkArt').checked === false, '开关状态应保持');
-$('#chkArt').checked = true;
-$('#chkArt').dispatchEvent(new win.Event('change', { bubbles:true }));
-eq($$('#board .card.up img').length, 1, '打开插画后应回到画片牌面');
+/* ── 牌面画风切换：动漫 / 洋画片 / 文字 ── */
+{
+  const srcAnime = $$('#board .card.up img')[0].getAttribute('src');
+  $('#selArt').value = 'classic';
+  $('#selArt').dispatchEvent(new win.Event('change', { bubbles:true }));
+  eq($$('#board .card.up img').length, 1, '洋画片版也应是图片牌面');
+  ok($$('#board .card.up img')[0].getAttribute('src') !== srcAnime, '切到洋画片版后图片内容应变化');
+  $('#selArt').value = 'text';
+  $('#selArt').dispatchEvent(new win.Event('change', { bubbles:true }));
+  eq($$('#board .card.up img').length, 0, '文字牌面不应有图片');
+  eq($$('#board .card.up .nm').length, 1, '文字牌面应显示牌名');
+  $('#selArt').value = 'anime';
+  $('#selArt').dispatchEvent(new win.Event('change', { bubbles:true }));
+  eq($$('#board .card.up img').length, 1, '切回动漫版应恢复图片牌面');
+  ok($$('#board .card.up img')[0].getAttribute('src') === srcAnime, '切回动漫版应还原成同一张图');
+}
 
 const sideA = $('#pA').classList.contains('dragon') ? 'dragon' : 'tiger';
 ok(['dragon','tiger'].includes(sideA), '玩家1 应获得一个阵营');

@@ -147,7 +147,7 @@ function pickAction(state){
   }
   eq(snap(guest.session.state), snap(host.session.state), '终局后客人局面与房主一致');
   eq(snap(viewer.session.state), snap(host.session.state), '终局后观众局面与房主一致');
-  clearInterval(ticker);
+  /* 注意：ticker 要一直留着——重连自愈依赖 tick()（真实界面里也是常驻每秒调用） */
 
   /* 5) 断线重连 */
   guest.client.close();
@@ -160,7 +160,8 @@ function pickAction(state){
   await sleep(800);                                        /* 给 SUBACK 留时间 */
   const statesBefore = guest.states;
   guest.session.join();
-  const got = await waitFor(() => guest.states > statesBefore, 15000, '重连后重新拿到局面');
+  /* 真实网络可能丢「欢迎消息」：会话会自动重发 join（最多 5 次），这里给足时间 */
+  const got = await waitFor(() => guest.states > statesBefore, 25000, '重连后重新拿到局面');
   if(!got){
     console.log('诊断：guest.states=' + guest.states + ' role=' + guest.session.role +
       ' hostId=' + guest.session.hostId + ' 有局面=' + !!guest.session.state);
@@ -183,6 +184,7 @@ function pickAction(state){
 
   function finish(){
     clearTimeout(watchdog);
+    try { clearInterval(ticker); } catch(e){}
     [host, guest, viewer].forEach(r => { try { r.client.close(); } catch(e){} });
     setTimeout(() => {
       console.log('');

@@ -62,8 +62,9 @@ async function waitFor(fn, ms, what){
     const T = tmpDom.window;
     await sleep(200);
     eq($(T, '#inNetName').value, '', '「我的昵称」默认为空');
-    $(T, '#selMode').value = 'host';
-    fire(T, $(T, '#selMode'), 'change');
+    eq($(T, '#roomBar').hidden, true, '一开始不应自动建房（房间栏隐藏）');
+    click(T, $(T, '#btnCreateRoom'));                       /* 由房主主动创建 */
+    eq($(T, '#selMode').value, 'host', '点「创建房间」应自动切到创建模式');
     ok($(T, '#nameA_lbl').textContent.indexOf('玩家1') >= 0, '房主留空昵称 → 自动叫「玩家1」：' + $(T, '#nameA_lbl').textContent);
     ok($(T, '#nameA_lbl').textContent.indexOf('我') >= 0, '房主的座位带「我」标记');
     ok($(T, '#nameB_lbl').textContent.indexOf('等待对手') >= 0, '对手座位显示「等待对手」');
@@ -71,10 +72,11 @@ async function waitFor(fn, ms, what){
     try { tmpDom.window.close(); } catch(e){}
   }
 
-  /* 1) 房主建房：连上中继之前就必须能翻牌（这是修掉的 bug） */
+  /* 1) 房主主动建房：连上中继之前就必须能翻牌（这是修掉的 bug） */
   $(H, '#inNetName').value = '房主';
-  $(H, '#selMode').value = 'host';
-  fire(H, $(H, '#selMode'), 'change');
+  eq($(H, '#roomBar').hidden, true, '没点「创建房间」之前不应有房间');
+  click(H, $(H, '#btnCreateRoom'));
+  eq($(H, '#selMode').value, 'host', '创建后模式自动切到「创建房间」');
   eq($(H, '#roomBar').hidden, false, '房主立刻看到房间栏');
   eq(syncing(H), false, '房主不需要同步，棋盘不应是灰的');
   click(H, $$(H, '#board .card.back')[0]);
@@ -92,8 +94,8 @@ async function waitFor(fn, ms, what){
 
   /* 2) 对手输房间号加入：未同步时棋盘要显示「同步中」 */
   $(G, '#inNetName').value = '小明';
-  $(G, '#selMode').value = 'join';
-  fire(G, $(G, '#selMode'), 'change');
+  click(G, $(G, '#btnAskJoin'));                 /* 主动点「加入房间」 */
+  eq($(G, '#selMode').value, 'join', '点「加入房间」应自动切到加入模式');
   eq($(G, '#rowRoomCode').hidden, false, '加入模式显示房间号输入');
   $(G, '#inRoomCode').value = room;
   click(G, $(G, '#btnJoinRoom'));
@@ -126,8 +128,7 @@ async function waitFor(fn, ms, what){
 
   /* 5) 第三个人进来观战：只读 */
   $(V, '#inNetName').value = '吃瓜';
-  $(V, '#selMode').value = 'join';
-  fire(V, $(V, '#selMode'), 'change');
+  click(V, $(V, '#btnAskJoin'));
   $(V, '#inRoomCode').value = room;
   click(V, $(V, '#btnJoinRoom'));
   if(!await waitFor(() => $(V, '#netStatus').textContent.indexOf('已连接') >= 0, 30000, '观众连上中继')){ finish(); return; }

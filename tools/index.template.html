@@ -219,6 +219,7 @@
     font-family:inherit;font-size:12.5px;padding:6px 10px;border-radius:8px;cursor:pointer;
     background:linear-gradient(180deg,#fffaf0,#f0e0c2);color:#43291a;border:1px solid rgba(91,58,34,.4)
   }
+  .mini.primary{background:linear-gradient(180deg,#fff3cf,#eccf8a);border-color:#b8912f;font-weight:700}
   .mini:active{background:#e9d7b4}
   .roomcode{
     font-family:Georgia,serif;font-size:20px;font-weight:700;letter-spacing:.18em;color:#7a3b12;
@@ -256,12 +257,17 @@
       <label for="inNetName">我的昵称</label>
       <input type="text" id="inNetName" maxlength="8" placeholder="留空则按座位自动命名" autocomplete="off">
     </div>
+    <div class="row" id="rowCreate">
+      <label></label>
+      <button class="mini" id="btnCreateRoom" type="button">创建房间</button>
+      <button class="mini" id="btnAskJoin" type="button">加入房间</button>
+    </div>
     <div class="row" id="rowRoomCode" hidden>
       <label for="inRoomCode">房间号</label>
       <input type="text" id="inRoomCode" maxlength="6" placeholder="6 位字母数字" autocomplete="off" spellcheck="false">
       <button class="mini" id="btnJoinRoom" type="button">加入</button>
     </div>
-    <div class="note" id="netHint">联机走公共 MQTT 中继（不用服务器）。规则由房主设定，联机时不能悔棋。</div>
+    <div class="note" id="netHint">联机走公共 MQTT 中继（不用服务器）：房主点「创建房间」并把 6 位房间号发给对手，对手输房间号点「加入」。规则由房主设定，联机时不能悔棋。</div>
   </div>
 
   <div class="panel" id="roomBar" hidden>
@@ -338,8 +344,12 @@
       </select>
     </div>
     <div class="row">
-      <label for="chkArt">牌面用画片插画</label>
-      <input type="checkbox" id="chkArt" checked>
+      <label for="selArt">牌面画风</label>
+      <select id="selArt">
+        <option value="anime" selected>动漫版（默认）</option>
+        <option value="classic">洋画片版（老画片）</option>
+        <option value="text">文字牌面</option>
+      </select>
     </div>
     <div class="row">
       <label for="inNameA">玩家1 昵称</label>
@@ -416,8 +426,8 @@
 
     <h4>联机对战（可选）</h4>
     <ul>
-      <li>「对战方式」选 <b>创建房间（我当房主）</b> → 页面给你一个 <b>6 位房间号</b>，把它发给对手。</li>
-      <li>对手选 <b>加入房间</b> 并输入房间号即可进来；<b>第三个及以后进来的人是观众</b>，只能看不能动。</li>
+      <li>房主点 <b>「创建房间」</b> → 页面给你一个 <b>6 位房间号</b>，把它发给对手（<b>不点就不会建房</b>，模式下拉只切换界面）。</li>
+      <li>对手点 <b>「加入房间」</b>、输入房间号再点「加入」即可进来；<b>第三个及以后进来的人是观众</b>，只能看不能动。</li>
       <li>规则由<b>房主</b>设定（棋盘大小、斜走、王能不能吃对方最小牌、判和手数），对手那边的设置项会锁住。</li>
       <li>联机时<b>不能悔棋</b>；只有房主能「新开一局」，重开后对手与观众会一起重置。</li>
       <li>每一步都由房主用规则校验后广播，双方看到的局面始终一致；掉线会自动重连并补发局面。</li>
@@ -426,7 +436,7 @@
 
     <h4>关于规则出处</h4>
     <p>规则整理自公开的怀旧资料（含百度百科「龙虎斗（纸质游戏牌）」条目，以及 2018 年网易／新浪的怀旧文章），并非当年印刷说明书；各地在「能否斜走」「小王虎通吃与否」「棋盘大小」上说法不一，本作把有争议的部分做成了设置项，你们群里可以按自己那套约定来。</p>
-    <p class="note">牌面插画：默认用的是你提供的<b>动漫风格画片</b>（16 张按图上的牌号对号入座，第 3 张图上印「<b>金蛟</b>」、第 15 张印「<b>良虎</b>」，而百科条目写作「金龙」「白虎」——文字仍按条目）。想换回最早的「洋画片」那一套，见 README 的说明；不想看图就把设置里的「牌面用画片插画」取消，会切回文字牌面。</p>
+    <p class="note">牌面画风（设置里可随时切，两套都已内嵌、离线可换）：<b>动漫版</b>（默认，你提供的那套）、<b>洋画片版</b>（最早的「龍虎鬥遊戲牌」画片，右下角带原图「AI生成」水印）、<b>文字牌面</b>。画片上第 3 张印「<b>金蛟</b>」、第 15 张印「<b>良虎</b>」，而百科条目写作「金龙」「白虎」——游戏文字仍按条目。</p>
     <p class="note">本页面为民间玩法复刻，仅供怀旧娱乐，请勿用于赌博。</p>
     <button class="close" id="btnCloseRules" type="button">知道了</button>
   </div>
@@ -978,6 +988,7 @@ function lhdSession(cfg){
     s.publishState();
   };
   s.join = function(){
+    s.joinedAt = Date.now();
     send({ t:'join', id:s.id, nm:s.name, r:s.role === 'viewer' ? 'viewer' : 'guest' });
   };
   s.leave = function(){ send({ t:'bye', id:s.id }); };
@@ -1053,7 +1064,7 @@ function lhdSession(cfg){
       s.hostId = m.hid; s.hostName = m.hnm || '房主';
       if(m.hid){ s.peers[m.hid] = { name:m.hnm || '房主', role:'host', last:Date.now(), online:true }; }
       var st = lhdRestore(m.st);
-      if(st){ s.state = st; s.pending = null; if(cfg.onState) cfg.onState(s.state, { fresh:true }); }
+      if(st){ s.state = st; s.pending = null; s.joinTries = 0; if(cfg.onState) cfg.onState(s.state, { fresh:true }); }
       if(cfg.onRole) cfg.onRole(s.role);
       pushPeers();
       return;
@@ -1066,7 +1077,7 @@ function lhdSession(cfg){
       var st2 = lhdRestore(m.st);
       if(st2){
         var wasPending = s.pending;
-        s.state = st2; s.pending = null;
+        s.state = st2; s.pending = null; s.joinTries = 0;
         if(cfg.onState) cfg.onState(s.state);
         /* 自己刚发的那一步没生效（局面被房主刷新了）→ 明确让玩家再点一次，而不是静默吞掉 */
         if(wasPending && st2.moves === wasPending.moves && cfg.onNotice){
@@ -1110,6 +1121,12 @@ function lhdSession(cfg){
         s.pending = null;
       }
     }
+    /* QoS0 下「欢迎消息」可能丢：进房 3 秒还没拿到局面就重发 join，最多 5 次 */
+    if((s.role === 'guest' || s.role === 'viewer') && !s.state && s.joinedAt &&
+       now - s.joinedAt > 3000 && (s.joinTries || 0) < 5){
+      s.joinTries = (s.joinTries || 0) + 1;
+      s.join();
+    }
     var changed = false, id;
     for(id in s.peers){
       if(!Object.prototype.hasOwnProperty.call(s.peers, id)) continue;
@@ -1125,11 +1142,11 @@ function lhdSession(cfg){
 </script>
 
 <script id="art">
-/* 牌面插画：上面那张画片的 16 张卡图，切成小图后转 base64 内嵌，保持「单文件、离线可玩」。
-   键名 = 牌 id（D1..D8 为龙 1-8，T1..T8 为虎 9-16）。由 tools/slice-sheet.ps1 生成。 */
-var CARD_ART = { /*==ART_DATA==*/ };
-/* 卡图的宽/高比（切图时统一过，页面按这个比例显示，所以不会裁成方形） */
-var CARD_RATIO = /*==ART_RATIO==*/0.6416;
+/* 牌面插画：两套画风各 16 张卡图（切小图后转 base64 内嵌，保持「单文件、离线可玩」）。
+   由 tools/embed-art.ps1 注入，结构：
+     { 画风key: { name:'…', ratio:宽高比, art:{ D1:'data:image/jpeg;base64,…', … } } }
+   键名 = 牌 id：D1..D8 是龙 1-8，T1..T8 是虎 9-16。 */
+var CARD_SETS = /*==ART_SETS==*/{};
 </script>
 
 <script id="ui">
@@ -1143,7 +1160,15 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
   var history = [];      /* 悔棋快照 */
   var sel = null;        /* 已选中的格子 */
   var anim = null;       /* { idx, type } */
-  var artOn = true;      /* 是否用画片插画牌面（纯显示，不影响规则） */
+  var artSet = 'anime';      /* 牌面画风：anime / classic / text（纯显示，不影响规则） */
+  function artOf(id){
+    var s = CARD_SETS[artSet];
+    return (s && s.art && s.art[id]) ? s.art[id] : null;
+  }
+  function artRatio(){
+    var s = CARD_SETS[artSet];
+    return (s && typeof s.ratio === 'number' && s.ratio > 0.3 && s.ratio < 1.6) ? s.ratio : 0.77;
+  }
 
   function clone(o){ return JSON.parse(JSON.stringify(o)); }
 
@@ -1241,10 +1266,11 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
       return d;
     }
     var sideCls = card.side === 'D' ? 'dragon' : 'tiger';
-    if(artOn && CARD_ART[card.id]){
+    var artUrl = artOf(card.id);
+    if(artUrl){
       d.className = 'card up art ' + sideCls;
       var img = document.createElement('img');
-      img.src = CARD_ART[card.id];
+      img.src = artUrl;
       img.alt = card.name;
       img.draggable = false;
       d.appendChild(img);
@@ -1377,7 +1403,7 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
 
   function syncSize(){
     var n = state.n, gap = 5, pad = 8;
-    var ratio = (typeof CARD_RATIO === 'number' && CARD_RATIO > 0.3) ? CARD_RATIO : 0.6416;
+    var ratio = artRatio();
     boardEl.style.setProperty('--ratio', String(ratio));
     /* 竖版卡片：先按「整块棋盘高度不超过视口的 62%」算格子宽，再受屏幕宽度限制 */
     var maxW = Math.min((window.innerWidth || 360) * 0.94, 460);
@@ -1431,6 +1457,9 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
     }
     $('rowViewers').hidden = viewers === 0;
     $('netViewers').textContent = viewers + ' 人';
+    /* 没进房间时显示「创建房间 / 加入房间」按钮；进了房间就收起 */
+    $('rowCreate').hidden = online;
+    $('rowRoomCode').hidden = online || ($('selMode').value !== 'join');
     $('roomNotice').textContent = net.notice || '';
 
     /* 客人/观众刚进房还没拿到房主局面：把棋盘变灰并明确提示，别让人以为是自己点不动 */
@@ -1530,6 +1559,7 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
 
   function netStartHost(){
     netTeardown(true);
+    $('selMode').value = 'host';             /* 建房即自动切到「创建房间」模式 */
     net.mode = 'host'; net.role = 'host';
     net.room = lhdRandomCode(6);
     net.secret = lhdDeriveSecret(net.room);
@@ -1546,6 +1576,7 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
     var code = ($('inRoomCode').value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
     if(code.length !== 6){ net.notice = '房间号应为 6 位'; netRender(); return; }
     netTeardown(true);
+    $('selMode').value = 'join';             /* 加入即自动切到「加入房间」模式 */
     net.mode = 'join'; net.role = 'guest';
     net.room = code; net.secret = lhdDeriveSecret(code);
     net.synced = false;
@@ -1592,8 +1623,9 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
   $('btnNew').addEventListener('click', newGame);
   $('btnUndo').addEventListener('click', undo);
 
-  $('chkArt').addEventListener('change', function(){
-    artOn = $('chkArt').checked;
+  $('selArt').addEventListener('change', function(){
+    artSet = $('selArt').value;
+    net.notice = (artSet === 'text') ? '已切成文字牌面' : '已切换牌面画风';
     render();
   });
 
@@ -1620,14 +1652,27 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
   window.addEventListener('orientationchange', function(){ setTimeout(syncSize, 200); });
 
   /* ── 联机相关控件 ── */
+  /* 选模式只切换界面，不会自动建房：建房 / 进房都由按钮主动触发 */
   $('selMode').addEventListener('change', function(){
     var m = $('selMode').value;
-    $('rowRoomCode').hidden = (m !== 'join');
-    if(m === 'host'){ netStartHost(); }
-    else if(m === 'join'){ net.notice = '输入房主给你的 6 位房间号，点「加入」'; netRender(); }
+    if(m === 'join'){ net.notice = '输入房主给你的 6 位房间号，点「加入」'; netRender(); }
+    else if(m === 'host'){ net.notice = '点「创建房间」生成房间号，再发给对手'; netRender(); }
     else { netTeardown(); newGame(); }
   });
-  $('btnJoinRoom').addEventListener('click', netStartJoin);
+  $('btnCreateRoom').addEventListener('click', function(){
+    $('selMode').value = 'host';                 /* 自动切到「创建房间」模式 */
+    netStartHost();
+  });
+  $('btnAskJoin').addEventListener('click', function(){
+    $('selMode').value = 'join';                 /* 自动切到「加入房间」模式 */
+    net.notice = '输入房主给你的 6 位房间号，点「加入」';
+    netRender();
+    try { $('inRoomCode').focus(); } catch(e){}
+  });
+  $('btnJoinRoom').addEventListener('click', function(){
+    $('selMode').value = 'join';
+    netStartJoin();
+  });
   $('btnLeaveRoom').addEventListener('click', function(){ netTeardown(); newGame(); });
   $('btnCopyRoom').addEventListener('click', function(){
     var text = net.room || '';
