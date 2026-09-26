@@ -230,27 +230,35 @@ eq($('#metaA').textContent, '阵营未定', '新开一局阵营应重置');
 
 /* ── 联机界面（不触网，只测结构与校验） ── */
 {
-  eq($$('#selMode option').length, 3, '模式下拉应有 3 项');
-  eq($('#selMode').value, 'local', '默认是同屏模式');
-  eq($('#roomBar').hidden, true, '同屏模式不显示房间栏');
-  eq($('#rowRoomCode').hidden, true, '同屏模式不显示房间号输入');
+  eq($('#roomBar').hidden, true, '一开始不显示房间栏');
+  eq($('#rowCreate').hidden, false, '未进房时显示「创建房间 / 加入房间」按钮');
+  eq($('#rowRoomCode').hidden, true, '一开始不应显示房号输入框（建房不问房号）');
 
-  $('#selMode').value = 'join';
-  $('#selMode').dispatchEvent(new win.Event('change', { bubbles:true }));
-  eq($('#rowRoomCode').hidden, false, '选「加入房间」应显示房间号输入');
-  eq($('#roomBar').hidden, true, '还没加入时不显示房间栏');
-
-  input($('#inRoomCode'), 'AB');                    /* 位数不对 */
+  click($('#btnAskJoin'));
+  eq($('#rowRoomCode').hidden, false, '只有点了「加入房间」才出现房号输入框');
+  input($('#inRoomCode'), 'ab12');
+  eq($('#inRoomCode').value, 'AB12', '房号输入框应自动转大写并过滤非法字符');
   click($('#btnJoinRoom'));
-  ok($('#roomNotice').textContent.indexOf('6 位') >= 0, '房间号位数不对应提示：' + $('#roomNotice').textContent);
-  eq($('#btnUndo').disabled, true, '未联机时仍不应有可悔的步');
+  ok($('#roomNotice').textContent.indexOf('6 位') >= 0, '房号位数不对应提示：' + $('#roomNotice').textContent);
+  eq($('#btnUndo').disabled, true, '未进房时仍不应有可悔的步');
 
-  $('#selMode').value = 'local';
-  $('#selMode').dispatchEvent(new win.Event('change', { bubbles:true }));
-  eq($('#roomBar').hidden, true, '切回同屏应隐藏房间栏');
-  eq($$('#board .card.back').length, 16, '切回同屏应重开一局（16 张暗牌）');
+  click($('#btnCancelJoin'));
+  eq($('#rowRoomCode').hidden, true, '点「取消」应收起房号输入框');
+
   click($('#board .card.back'));
-  eq($$('#board .card.up').length, 1, '切回同屏后仍可正常翻牌');
+  eq($$('#board .card.up').length, 1, '同屏模式照常可以翻牌');
+}
+
+/* ── 同级同归于尽开关 ── */
+{
+  eq(!!$('#chkMutual'), true, '设置里应有「同级相遇同归于尽」开关');
+  eq($('#chkMutual').checked, true, '该规则默认开启');
+  $('#chkMutual').checked = false;
+  click($('#btnNew'));
+  eq($$('#board .card.back').length, 16, '关掉开关后新开一局仍正常');
+  $('#chkMutual').checked = true;
+  click($('#btnNew'));
+  eq($$('#board .card.back').length, 16, '打开开关后新开一局仍正常');
 }
 
 /* ── 页面无脚本报错 ── */

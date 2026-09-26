@@ -24,7 +24,7 @@ if(!em){ report(); process.exit(1); }
 const buildFile = path.join(__dirname, '.engine.build.cjs');
 fs.writeFileSync(buildFile,
   em[1] + '\nmodule.exports = { SIDES, CARDS, CARD_MAP, otherSide, otherPlayer, createGame, playerSide, ' +
-  'pname, label, neighbors, canCapture, actionsFor, hasAnyAction, pieceCount, allRevealed, anyCapturePossible, checkOver, applyFlip, applyMove };\n',
+  'pname, label, neighbors, canCapture, isMutualKill, actionsFor, hasAnyAction, pieceCount, allRevealed, anyCapturePossible, checkOver, applyFlip, applyMove };\n',
   'utf8');
 const E = require(buildFile);
 
@@ -48,9 +48,10 @@ function blankState(opts){
   return {
     n:o.n, total:total, diagonal:o.diagonal, tigerEatsAll:o.tigerEatsAll,
     kingEatsWeakest:!!o.kingEatsWeakest,
+    mutualKill:o.mutualKill !== false,
     noCaptureLimit:0, sinceCapture:0,
     cells:new Array(total).fill(null), turn:'A', sideA:'D', sideB:'T',
-    names:{ A:'玩家1', B:'玩家2' }, captured:{ A:[], B:[] }, moves:0, log:[], over:null
+    names:{ A:'玩家1', B:'玩家2' }, captured:{ A:[], B:[] }, mutualGone:[], moves:0, log:[], over:null
   };
 }
 function put(s, idx, cardId, up){ s.cells[idx] = { cardId:cardId, up: up !== false }; }
@@ -206,8 +207,13 @@ eq(E.CARD_MAP.T8.name, '小王虎', '16 号应为小王虎');
 
   const u = blankState({ n:4 });
   put(u, 0, 'D8');            /* 变形龙 */
-  put(u, 1, 'T8');            /* 小王虎：同级，最弱互不能吃 */
-  eq(E.actionsFor(u, 'A').moves.some(m => m.to === 1), false, '变形龙与小王虎互不能吃');
+  put(u, 1, 'T8');            /* 小王虎：同级 —— 关掉同归于尽时互不能吃 */
+  u.mutualKill = false;
+  eq(E.actionsFor(u, 'A').moves.some(m => m.to === 1), false, '关掉同归于尽后，变形龙与小王虎互不能吃');
+  const u2 = blankState({ n:4 });
+  put(u2, 0, 'D8');
+  put(u2, 1, 'T8');
+  ok(E.actionsFor(u2, 'A').moves.some(m => m.to === 1 && m.mutual), '开着同归于尽时，同级可以撞上去');
 
   const v = blankState({ n:4 });
   put(v, 0, 'D3');            /* 金龙，中间级别 */
@@ -231,10 +237,68 @@ eq(E.CARD_MAP.T8.name, '小王虎', '16 号应为小王虎');
   eq(E.actionsFor(y, 'B').moves.some(m => m.to === 1), false, '虎王不能吃变形龙');
 }
 
+/* ── 6c. 同级相遇：同归于尽 ── */
+{
+  /* 判定函数 */
+  const mk = (a, b, on) => E.isMutualKill(a, b, on);
+  eq(mk('D5','T5',true), true,  '同级（赤龙-绿虎）可以同归于尽');
+  eq(mk('D5','T5',false), false, '关掉开关后不允许同归于尽');
+  eq(mk('D1','T5',true), false, '级别不同不算同级');
+  eq(mk('D5','D5',true), false, '自己人之间谈不上同归于尽');
+
+  /* 走一步：两张一起离场，棋盘上两格都空 */
+  const s = blankState({ n:4 });
+  put(s, 0, 'D5');
+  put(s, 1, 'T5');
+  put(s, 2, 'T3');                       /* 虎方还有别子，避免直接终局 */
+  const before = s.moves;
+  const r = E.applyMove(s, 0, 1);
+  eq(r.ok, true, '同级可以直接撞上去');
+  eq(r.mutual, true, '应标记为同归于尽');
+  eq(r.capture, false, '同归于尽不算"吃"');
+  eq(s.cells[0], null, '攻击方离场');
+  eq(s.cells[1], null, '被撞方也离场');
+  eq(s.captured.A.length + s.captured.B.length, 0, '双方战利品都不增加');
+  eq(s.moves, before + 1, '占用一回合');
+  eq(s.sinceCapture, 0, '同归于尽算有进展，静默计数归零');
+  ok(s.log.length && s.log[s.log.length - 1].text.indexOf('同归于尽') >= 0, '战报应写明同归于尽：' + (s.log[s.log.length-1] || {}).text);
+
+  /* 关掉开关后这一步不合法 */
+  const s2 = blankState({ n:4, mutualKill:false });
+  put(s2, 0, 'D5');
+  put(s2, 1, 'T5');
+  eq(E.applyMove(s2, 0, 1).ok, false, '关掉开关后同级不能撞');
+
+  /* 双方最后一张同归于尽 → 和棋 */
+  const s3 = blankState({ n:4 });
+  put(s3, 0, 'D5');
+  put(s3, 1, 'T5');
+  E.applyMove(s3, 0, 1);
+  ok(s3.over && s3.over.draw, '两边都没牌了应判和棋');
+  eq(s3.over && s3.over.winner, null, '同归于尽没有胜方');
+  ok(String(s3.over.reason).indexOf('同归于尽') >= 0, '和棋原因应写明：' + (s3.over && s3.over.reason));
+
+  /* 只有对方被清空 → 对方判负（自己还剩子） */
+  const s4 = blankState({ n:4 });
+  put(s4, 0, 'D5');
+  put(s4, 4, 'D3');                      /* 龙方还有一张，撞完不空 */
+  put(s4, 1, 'T5');
+  E.applyMove(s4, 0, 1);
+  ok(!s4.over || !s4.over.draw, '还有子的一方不该判和');
+
+  /* 同级还在，就不算死局（开着同归于尽时） */
+  const s5 = blankState({ n:5 });
+  put(s5, 0, 'D5');
+  put(s5, 6, 'T5');
+  eq(E.anyCapturePossible(s5), true, '有同级对子就不算吃不动');
+  s5.mutualKill = false;
+  eq(E.anyCapturePossible(s5), false, '关掉后同级对子也不再是可行动作');
+}
+
 /* ── 7. 无棋可走判负 ── */
 {
   /* 4×4 全部摆满、相邻全是同级别牌（棋盘染色：偶数格赤龙、奇数格绿虎），谁先手谁无路可走 */
-  const s = blankState({ n:4 });
+  const s = blankState({ n:4, mutualKill:false });   /* 关掉同归于尽，才能测出「完全无路可走」 */
   for(let i = 0; i < 16; i++){
     const even = (Math.floor(i / 4) + (i % 4)) % 2 === 0;
     put(s, i, even ? 'D5' : 'T5', i !== 0);   /* 0 号留一张暗牌给玩家1 翻 */
@@ -250,14 +314,14 @@ eq(E.CARD_MAP.T8.name, '小王虎', '16 号应为小王虎');
 
 /* ── 7b. 死局判和 ── */
 {
-  const s = blankState({ n:5 });                     /* 5×5 留出空格，保证还有地方可走 */
+  const s = blankState({ n:5, mutualKill:false });   /* 关掉同归于尽，测真正的死局 */
   put(s, 0, 'D5');                                    /* 双方都只剩同级牌 */
   put(s, 24, 'D5');
   put(s, 6, 'T5');
   put(s, 12, 'T5');
   s.turn = 'A';
   eq(E.allRevealed(s), true, '全部已翻开');
-  eq(E.anyCapturePossible(s), false, '同级牌之间不存在任何吃子机会');
+  eq(E.anyCapturePossible(s), false, '关掉同归于尽后，同级牌之间不存在任何吃子机会');
   ok(E.hasAnyAction(s, 'A'), '此时仍然有地方可以走子（不是“无棋可走”判负）');
   E.checkOver(s);
   ok(!!s.over, '死局应结束对局');
@@ -278,6 +342,18 @@ eq(E.CARD_MAP.T8.name, '小王虎', '16 号应为小王虎');
   eq(E.allRevealed(h), false, '存在暗牌');
   E.checkOver(h);
   eq(h.over, null, '还有暗牌时不应判和');
+
+  /* 同一局面打开同归于尽后就不再是死局：他们可以互相撞掉 */
+  const h2 = blankState({ n:5 });
+  put(h2, 0, 'D5');
+  put(h2, 1, 'T5');                     /* 紧挨着，才有"撞上去"这个选择 */
+  put(h2, 24, 'D5');
+  put(h2, 23, 'T5');
+  h2.turn = 'A';
+  eq(E.anyCapturePossible(h2), true, '打开同归于尽后同级也是可行动作');
+  E.checkOver(h2);
+  eq(h2.over, null, '打开同归于尽后不应判死局和棋');
+  ok(E.actionsFor(h2, 'A').moves.some(m => m.mutual), '这时应该有「撞上去」这个选择');
 }
 
 /* ── 7c. 连续无吃子判和（附加规则） ── */
@@ -342,9 +418,11 @@ eq(E.CARD_MAP.T8.name, '小王虎', '16 号应为小王虎');
       }
       const board = s.cells.filter(Boolean);
       const captured = s.captured.A.length + s.captured.B.length;
+      const gone = (s.mutualGone || []).length;
       const ids = board.map(c => c.cardId);
-      if(board.length + captured !== 16 || new Set(ids).size !== ids.length) badInvariant++;
-      if(captured < 3) noProgress++;
+      const allIds = ids.concat(s.captured.A, s.captured.B, s.mutualGone || []);
+      if(board.length + captured + gone !== 16 || new Set(allIds).size !== allIds.length) badInvariant++;
+      if(captured + gone < 3) noProgress++;
       if(s.over && s.over.draw){
         draws++;
         if(!E.allRevealed(s)) drawWithoutReveal++;
@@ -357,9 +435,9 @@ eq(E.CARD_MAP.T8.name, '小王虎', '16 号应为小王虎');
     }
   }
   eq(threw, 0, '随机自对弈不应抛异常');
-  eq(badInvariant, 0, '任意时刻“场上牌数 + 被吃牌数 = 16”且不重复');
+  eq(badInvariant, 0, '任意时刻“场上牌数 + 被吃牌数 + 同归于尽数 = 16”且不重复');
   eq(ended + unfinished, 300, '自对弈局数');
-  eq(noProgress, 0, '每局随机对弈都应至少吃掉 3 张牌（说明引擎有推进力）');
+  eq(noProgress, 0, '每局随机对弈都应至少离场 3 张牌（说明引擎有推进力）');
   eq(drawWithoutReveal, 0, '判和棋时不应还有未翻开的牌');
   console.log('  自对弈：结束 ' + ended + ' 局（其中和棋 ' + draws + ' 局），走满上限 ' + unfinished +
     ' 局，平均吃掉 ' + (sumCaptured / 300).toFixed(1) + ' 张，异常 ' + threw + ' 次');

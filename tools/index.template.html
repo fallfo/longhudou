@@ -76,6 +76,11 @@
     box-shadow:inset 0 0 0 3px #e0362f,0 0 10px rgba(224,54,47,.7);
     animation:pulse 1.05s ease-in-out infinite;pointer-events:none
   }
+  .cell.tgt-mutual::after{                 /* 同级：撞上去同归于尽 */
+    content:"";position:absolute;inset:0;border-radius:7px;
+    box-shadow:inset 0 0 0 3px #8a4bd6,0 0 10px rgba(138,75,214,.75);
+    animation:pulse 1.05s ease-in-out infinite;pointer-events:none
+  }
   @keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
 
   .card{
@@ -246,28 +251,21 @@
   <div class="panel" id="netSetup">
     <h3>对战方式</h3>
     <div class="row">
-      <label for="selMode">模式</label>
-      <select id="selMode">
-        <option value="local">同屏双人（一台设备）</option>
-        <option value="host">创建房间（我当房主）</option>
-        <option value="join">加入房间（输房间号）</option>
-      </select>
-    </div>
-    <div class="row">
       <label for="inNetName">我的昵称</label>
       <input type="text" id="inNetName" maxlength="8" placeholder="留空则按座位自动命名" autocomplete="off">
     </div>
     <div class="row" id="rowCreate">
       <label></label>
-      <button class="mini" id="btnCreateRoom" type="button">创建房间</button>
+      <button class="mini primary" id="btnCreateRoom" type="button">创建房间</button>
       <button class="mini" id="btnAskJoin" type="button">加入房间</button>
     </div>
     <div class="row" id="rowRoomCode" hidden>
       <label for="inRoomCode">房间号</label>
       <input type="text" id="inRoomCode" maxlength="6" placeholder="6 位字母数字" autocomplete="off" spellcheck="false">
-      <button class="mini" id="btnJoinRoom" type="button">加入</button>
+      <button class="mini primary" id="btnJoinRoom" type="button">加入</button>
+      <button class="mini" id="btnCancelJoin" type="button">取消</button>
     </div>
-    <div class="note" id="netHint">联机走公共 MQTT 中继（不用服务器）：房主点「创建房间」并把 6 位房间号发给对手，对手输房间号点「加入」。规则由房主设定，联机时不能悔棋。</div>
+    <div class="note" id="netHint">默认是同屏双人（一台设备轮流）。想联机：房主点「创建房间」把 6 位房间号发给对手，对手点「加入房间」输入房号即可。规则由房主设定，联机时不能悔棋。</div>
   </div>
 
   <div class="panel" id="roomBar" hidden>
@@ -327,6 +325,10 @@
     <div class="row">
       <label for="chkTiger">小王虎通吃所有龙牌</label>
       <input type="checkbox" id="chkTiger">
+    </div>
+    <div class="row">
+      <label for="chkMutual">同级相遇同归于尽</label>
+      <input type="checkbox" id="chkMutual" checked>
     </div>
     <div class="row">
       <label for="selKing">王能吃对方最小牌吗</label>
@@ -411,11 +413,19 @@
       <li>（可选，见设置）有的地方玩「小王虎通吃所有龙牌」。</li>
     </ul>
 
+    <h4>同级相遇：同归于尽</h4>
+    <ul>
+      <li>级别相同（例如青龙 4 对下山虎 12）的两张牌<b>挨着时可以直接撞上去，两张一起离场</b>——棋盘上用一个<b>紫圈</b>提示。</li>
+      <li>它算一次正常行动（占你这一回合），也让"连续无吃子判和"的计数归零。</li>
+      <li>如果撞完两边都没牌了，判<b>和棋</b>（双方同归于尽）。</li>
+      <li>不想玩这条就在设置里取消「同级相遇同归于尽」；关掉后同级仍然是谁也吃不了谁。</li>
+    </ul>
+
     <h4>胜负</h4>
     <ul>
       <li>吃掉对方<b>全部 8 张牌</b>者胜（含还没翻开的暗牌）。</li>
       <li>轮到某方时既无牌可翻、又无子可动，该方判负。</li>
-      <li>判<b>和棋</b>的两种情况：① 牌全部翻开后，双方剩下的牌彼此都吃不动（只剩同级牌之类的死局）；② 连续多手都没有吃到牌（默认 60 手，可在设置里改成 100 手或「不限」）。</li>
+      <li>判<b>和棋</b>的情况：① 双方棋子同归于尽；② 牌全部翻开后彼此都吃不动、也没法同归于尽（死局）；③ 连续多手都没有吃到牌（默认 60 手，可在设置里改成 100 手或「不限」）。</li>
     </ul>
 
     <h4>操作</h4>
@@ -426,8 +436,8 @@
 
     <h4>联机对战（可选）</h4>
     <ul>
-      <li>房主点 <b>「创建房间」</b> → 页面给你一个 <b>6 位房间号</b>，把它发给对手（<b>不点就不会建房</b>，模式下拉只切换界面）。</li>
-      <li>对手点 <b>「加入房间」</b>、输入房间号再点「加入」即可进来；<b>第三个及以后进来的人是观众</b>，只能看不能动。</li>
+      <li>默认是<b>同屏双人</b>（一台设备轮流）。想联机：房主点 <b>「创建房间」</b> → 页面给你一个 <b>6 位房间号</b>，发给对手即可（<b>建房不问房号</b>）。</li>
+      <li>对手点 <b>「加入房间」</b> → <b>这时才出现房号输入框</b> → 输入 6 位房号点「加入」（直接回车也行）；<b>第三个及以后进来的人是观众</b>，只能看不能动。</li>
       <li>规则由<b>房主</b>设定（棋盘大小、斜走、王能不能吃对方最小牌、判和手数），对手那边的设置项会锁住。</li>
       <li>联机时<b>不能悔棋</b>；只有房主能「新开一局」，重开后对手与观众会一起重置。</li>
       <li>每一步都由房主用规则校验后广播，双方看到的局面始终一致；掉线会自动重连并补发局面。</li>
@@ -503,6 +513,7 @@ function createGame(opts){
     diagonal:!!opts.diagonal,
     tigerEatsAll:!!opts.tigerEatsAll,
     kingEatsWeakest:!!opts.kingEatsWeakest,
+    mutualKill:opts.mutualKill !== false,      /* 同级相遇同归于尽（默认开） */
     noCaptureLimit:(opts.noCaptureLimit === undefined ? 60 : opts.noCaptureLimit) | 0,
     sinceCapture:0,
     cells:cells,
@@ -510,6 +521,7 @@ function createGame(opts){
     sideA:null, sideB:null,
     names:{ A:opts.nameA || '玩家1', B:opts.nameB || '玩家2' },
     captured:{ A:[], B:[] },
+    mutualGone:[],                             /* 同归于尽离场的牌（双方一起没） */
     moves:0,
     log:[],
     over:null
@@ -552,6 +564,13 @@ function canCapture(attackerId, defenderId, tigerEatsAll, kingEatsWeakest){
   return a.rank < d.rank;
 }
 
+/* 同级相遇：两边一起消失（可开关的房规） */
+function isMutualKill(attackerId, defenderId, mutualKill){
+  var a = CARD_MAP[attackerId], d = CARD_MAP[defenderId];
+  if(!mutualKill || !a || !d) return false;
+  return a.side !== d.side && a.rank === d.rank;
+}
+
 /* 当前可行动作 */
 function actionsFor(state, player){
   var side = playerSide(state, player);
@@ -573,6 +592,8 @@ function actionsFor(state, player){
         } else if(target.up && CARD_MAP[target.cardId].side !== side &&
                   canCapture(from.cardId, target.cardId, state.tigerEatsAll, state.kingEatsWeakest)){
           moves.push({ from:j, to:to, capture:true });
+        } else if(target.up && isMutualKill(from.cardId, target.cardId, state.mutualKill)){
+          moves.push({ from:j, to:to, capture:true, mutual:true });   /* 同级：撞上去一起没 */
         }
       }
     }
@@ -622,6 +643,8 @@ function anyCapturePossible(state){
     for(j = 0; j < tigers.length; j++){
       if(canCapture(dragons[i], tigers[j], state.tigerEatsAll, state.kingEatsWeakest)) return true;
       if(canCapture(tigers[j], dragons[i], state.tigerEatsAll, state.kingEatsWeakest)) return true;
+      /* 同级还能同归于尽，就不算死局 */
+      if(isMutualKill(dragons[i], tigers[j], state.mutualKill)) return true;
     }
   }
   return false;
@@ -632,6 +655,11 @@ function checkOver(state){
   if(!state.sideA || !state.sideB) return;
 
   var sides = ['D','T'], i;
+  /* 双方同归于尽：谁也没剩，判和（必须在单向判定之前处理） */
+  if(pieceCount(state, 'D') === 0 && pieceCount(state, 'T') === 0){
+    state.over = { winner:null, draw:true, reason:'双方棋子同归于尽' };
+    return;
+  }
   for(i = 0; i < sides.length; i++){
     var side = sides[i];
     if(pieceCount(state, side) === 0){
@@ -694,12 +722,21 @@ function applyMove(state, from, to){
   var mover = state.cells[from];
   var moverCard = CARD_MAP[mover.cardId];
   var target = state.cells[to];
-  var captured = null;
+  var captured = null, mutual = false;
 
   if(target === null){
     state.cells[to] = mover;
     state.cells[from] = null;
     addLog(state, label(state, state.turn) + ' 走【' + moverCard.name + '】', moverCard.side);
+  } else if(hit.mutual){
+    /* 同级相遇：两张一起离场 */
+    var foe = CARD_MAP[target.cardId];
+    state.cells[from] = null;
+    state.cells[to] = null;
+    mutual = true;
+    if(!state.mutualGone) state.mutualGone = [];
+    state.mutualGone.push(mover.cardId, foe.id);
+    addLog(state, label(state, state.turn) + ' 【' + moverCard.name + '】与【' + foe.name + '】同级相遇，同归于尽', null);
   } else {
     captured = CARD_MAP[target.cardId];
     state.captured[state.turn].push(target.cardId);
@@ -707,8 +744,8 @@ function applyMove(state, from, to){
     state.cells[from] = null;
     addLog(state, label(state, state.turn) + ' 【' + moverCard.name + '】吃【' + captured.name + '】', moverCard.side);
   }
-  advance(state, !!captured);
-  return { ok:true, capture:!!captured, capturedId:captured ? captured.id : null, side:moverCard.side };
+  advance(state, !!(captured || mutual));
+  return { ok:true, capture:!!captured, mutual:mutual, capturedId:captured ? captured.id : null, side:moverCard.side };
 }
 /*==ENGINE_END==*/
 </script>
@@ -909,8 +946,10 @@ function lhdSnapshot(st){
   }
   return {
     n:st.n, dg:st.diagonal ? 1 : 0, ta:st.tigerEatsAll ? 1 : 0, kw:st.kingEatsWeakest ? 1 : 0,
+    km:st.mutualKill ? 1 : 0,
     nl:st.noCaptureLimit | 0, cells:cells, tn:st.turn, sa:st.sideA, sb:st.sideB,
     cp:{ A:st.captured.A.slice(), B:st.captured.B.slice() },
+    mg:(st.mutualGone || []).slice(),
     mv:st.moves, sc:st.sinceCapture, lg:st.log.slice(-30), ov:st.over,
     nm:{ A:st.names.A, B:st.names.B }
   };
@@ -936,12 +975,13 @@ function lhdRestore(sn){
   if(!okCap(cp.A) || !okCap(cp.B)) return null;
   return {
     n:n, total:n * n,
-    diagonal:!!sn.dg, tigerEatsAll:!!sn.ta, kingEatsWeakest:!!sn.kw,
+    diagonal:!!sn.dg, tigerEatsAll:!!sn.ta, kingEatsWeakest:!!sn.kw, mutualKill:!!sn.km,
     noCaptureLimit:sn.nl | 0, sinceCapture:sn.sc | 0,
     cells:cells, turn:sn.tn,
     sideA:(sn.sa === 'D' || sn.sa === 'T') ? sn.sa : null,
     sideB:(sn.sb === 'D' || sn.sb === 'T') ? sn.sb : null,
     captured:{ A:cp.A.slice(), B:cp.B.slice() },
+    mutualGone:Array.isArray(sn.mg) ? sn.mg.filter(function(id){ return !!CARD_MAP[id]; }) : [],
     moves:sn.mv | 0,
     log:Array.isArray(sn.lg) ? sn.lg.slice(-30) : [],
     over:sn.ov || null,
@@ -1178,6 +1218,7 @@ var CARD_SETS = /*==ART_SETS==*/{};
       diagonal: $('chkDiag').checked,
       tigerEatsAll: $('chkTiger').checked,
       kingEatsWeakest: $('selKing').value === '1',
+      mutualKill: $('chkMutual').checked,
       noCaptureLimit: parseInt($('selDraw').value, 10) || 0,
       nameA: ($('inNameA').value || '玩家1').slice(0, 8),
       nameB: ($('inNameB').value || '玩家2').slice(0, 8)
@@ -1291,7 +1332,7 @@ var CARD_SETS = /*==ART_SETS==*/{};
     boardEl.innerHTML = '';
 
     var tgtMap = {};
-    legalFrom(sel).forEach(function(m){ tgtMap[m.to] = m.capture ? 'tgt-cap' : 'tgt-move'; });
+    legalFrom(sel).forEach(function(m){ tgtMap[m.to] = m.mutual ? 'tgt-mutual' : (m.capture ? 'tgt-cap' : 'tgt-move'); });
 
     for(var i = 0; i < state.total; i++){
       var cell = state.cells[i];
@@ -1351,9 +1392,12 @@ var CARD_SETS = /*==ART_SETS==*/{};
         hintEl.textContent = '这张【' + CARD_MAP[state.cells[sel].cardId].name + '】没有可走或可吃的位置，换一张试试。' + silence;
       } else {
         var canMove = t.some(function(m){ return !m.capture; });
-        var canCap = t.some(function(m){ return m.capture; });
+        var canCap = t.some(function(m){ return m.capture && !m.mutual; });
+        var canMutual = t.some(function(m){ return m.mutual; });
         hintEl.textContent = '已选中【' + CARD_MAP[state.cells[sel].cardId].name + '】：' +
-          (canMove ? '点绿点走子' : '') + (canMove && canCap ? '，' : '') + (canCap ? '点红圈吃子' : '') + '；再点一次取消。' + silence;
+          (canMove ? '点绿点走子' : '') + (canMove && (canCap || canMutual) ? '，' : '') +
+          (canCap ? '点红圈吃子' : '') + (canCap && canMutual ? '，' : '') +
+          (canMutual ? '点紫圈与对方同归于尽' : '') + '；再点一次取消。' + silence;
       }
     }
   }
@@ -1373,8 +1417,9 @@ var CARD_SETS = /*==ART_SETS==*/{};
         var cell = state.cells[i];
         if(cell && cell.up && CARD_MAP[cell.cardId].side === side) upCount++;
       }
+      var gone = (state.mutualGone || []).filter(function(id){ return side && CARD_MAP[id].side === side; }).length;
       $(p === 'A' ? 'metaA' : 'metaB').textContent = side
-        ? SIDES[side].cn + ' · 场上明牌 ' + upCount + ' 张'
+        ? SIDES[side].cn + ' · 场上明牌 ' + upCount + ' 张' + (gone ? ' · 同归于尽 ' + gone : '')
         : '阵营未定';
 
       var chips = state.captured[p].map(function(id){
@@ -1419,7 +1464,7 @@ var CARD_SETS = /*==ART_SETS==*/{};
 
   /* ── 联机 ── */
   var net = { mode:'local', role:null, room:null, secret:null, client:null, session:null,
-              peers:[], status:'', notice:'', synced:false, connectStart:0, slowWarned:false };
+              peers:[], status:'', notice:'', synced:false, connectStart:0, slowWarned:false, wantJoin:false };
 
   function esc(s){
     return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){
@@ -1457,9 +1502,9 @@ var CARD_SETS = /*==ART_SETS==*/{};
     }
     $('rowViewers').hidden = viewers === 0;
     $('netViewers').textContent = viewers + ' 人';
-    /* 没进房间时显示「创建房间 / 加入房间」按钮；进了房间就收起 */
+    /* 没进房间时显示「创建房间 / 加入房间」；只有点了「加入房间」才出现房号输入框 */
     $('rowCreate').hidden = online;
-    $('rowRoomCode').hidden = online || ($('selMode').value !== 'join');
+    $('rowRoomCode').hidden = online || !net.wantJoin;
     $('roomNotice').textContent = net.notice || '';
 
     /* 客人/观众刚进房还没拿到房主局面：把棋盘变灰并明确提示，别让人以为是自己点不动 */
@@ -1477,7 +1522,7 @@ var CARD_SETS = /*==ART_SETS==*/{};
       $('roomNotice').textContent = '⚠ 连不上公共中继（可能被网络/防火墙限制）：换个网络，或点右上角「在浏览器中打开」重试';
     }
     var lock = online && net.role !== 'host';
-    ['selSize','chkDiag','chkTiger','selKing','selDraw'].forEach(function(id){
+    ['selSize','chkDiag','chkTiger','selKing','chkMutual','selDraw'].forEach(function(id){
       var el = $(id);
       if(el) el.disabled = lock;
     });
@@ -1495,10 +1540,7 @@ var CARD_SETS = /*==ART_SETS==*/{};
     net.session = null; net.client = null;
     net.mode = 'local'; net.role = null; net.room = null; net.secret = null;
     net.peers = []; net.status = ''; net.notice = '';
-    if(!silent){
-      $('selMode').value = 'local';
-      $('rowRoomCode').hidden = true;
-    }
+    net.wantJoin = false;
     netRender();
   }
 
@@ -1559,7 +1601,6 @@ var CARD_SETS = /*==ART_SETS==*/{};
 
   function netStartHost(){
     netTeardown(true);
-    $('selMode').value = 'host';             /* 建房即自动切到「创建房间」模式 */
     net.mode = 'host'; net.role = 'host';
     net.room = lhdRandomCode(6);
     net.secret = lhdDeriveSecret(net.room);
@@ -1576,7 +1617,6 @@ var CARD_SETS = /*==ART_SETS==*/{};
     var code = ($('inRoomCode').value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
     if(code.length !== 6){ net.notice = '房间号应为 6 位'; netRender(); return; }
     netTeardown(true);
-    $('selMode').value = 'join';             /* 加入即自动切到「加入房间」模式 */
     net.mode = 'join'; net.role = 'guest';
     net.room = code; net.secret = lhdDeriveSecret(code);
     net.synced = false;
@@ -1652,26 +1692,25 @@ var CARD_SETS = /*==ART_SETS==*/{};
   window.addEventListener('orientationchange', function(){ setTimeout(syncSize, 200); });
 
   /* ── 联机相关控件 ── */
-  /* 选模式只切换界面，不会自动建房：建房 / 进房都由按钮主动触发 */
-  $('selMode').addEventListener('change', function(){
-    var m = $('selMode').value;
-    if(m === 'join'){ net.notice = '输入房主给你的 6 位房间号，点「加入」'; netRender(); }
-    else if(m === 'host'){ net.notice = '点「创建房间」生成房间号，再发给对手'; netRender(); }
-    else { netTeardown(); newGame(); }
-  });
-  $('btnCreateRoom').addEventListener('click', function(){
-    $('selMode').value = 'host';                 /* 自动切到「创建房间」模式 */
-    netStartHost();
-  });
+  /* 平时只有两个按钮：建房不问房号；只有点「加入房间」才展开房号输入框 */
+  $('btnCreateRoom').addEventListener('click', function(){ netStartHost(); });
   $('btnAskJoin').addEventListener('click', function(){
-    $('selMode').value = 'join';                 /* 自动切到「加入房间」模式 */
-    net.notice = '输入房主给你的 6 位房间号，点「加入」';
+    net.wantJoin = true;
+    net.notice = '输入房主给你的 6 位房间号，点「加入」（回车也行）';
     netRender();
     try { $('inRoomCode').focus(); } catch(e){}
   });
-  $('btnJoinRoom').addEventListener('click', function(){
-    $('selMode').value = 'join';
-    netStartJoin();
+  $('btnCancelJoin').addEventListener('click', function(){
+    net.wantJoin = false;
+    net.notice = '';
+    netRender();
+  });
+  $('btnJoinRoom').addEventListener('click', function(){ netStartJoin(); });
+  $('inRoomCode').addEventListener('keydown', function(e){
+    if(e.key === 'Enter' || e.keyCode === 13) netStartJoin();
+  });
+  $('inRoomCode').addEventListener('input', function(){
+    this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
   });
   $('btnLeaveRoom').addEventListener('click', function(){ netTeardown(); newGame(); });
   $('btnCopyRoom').addEventListener('click', function(){

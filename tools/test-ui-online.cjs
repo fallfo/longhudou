@@ -64,7 +64,7 @@ async function waitFor(fn, ms, what){
     eq($(T, '#inNetName').value, '', '「我的昵称」默认为空');
     eq($(T, '#roomBar').hidden, true, '一开始不应自动建房（房间栏隐藏）');
     click(T, $(T, '#btnCreateRoom'));                       /* 由房主主动创建 */
-    eq($(T, '#selMode').value, 'host', '点「创建房间」应自动切到创建模式');
+    eq($(T, '#rowRoomCode').hidden, true, '建房不问房号（输入框应保持隐藏）');
     ok($(T, '#nameA_lbl').textContent.indexOf('玩家1') >= 0, '房主留空昵称 → 自动叫「玩家1」：' + $(T, '#nameA_lbl').textContent);
     ok($(T, '#nameA_lbl').textContent.indexOf('我') >= 0, '房主的座位带「我」标记');
     ok($(T, '#nameB_lbl').textContent.indexOf('等待对手') >= 0, '对手座位显示「等待对手」');
@@ -76,7 +76,7 @@ async function waitFor(fn, ms, what){
   $(H, '#inNetName').value = '房主';
   eq($(H, '#roomBar').hidden, true, '没点「创建房间」之前不应有房间');
   click(H, $(H, '#btnCreateRoom'));
-  eq($(H, '#selMode').value, 'host', '创建后模式自动切到「创建房间」');
+  eq($(H, '#rowRoomCode').hidden, true, '建房流程不要求输入房号');
   eq($(H, '#roomBar').hidden, false, '房主立刻看到房间栏');
   eq(syncing(H), false, '房主不需要同步，棋盘不应是灰的');
   click(H, $$(H, '#board .card.back')[0]);
@@ -95,8 +95,7 @@ async function waitFor(fn, ms, what){
   /* 2) 对手输房间号加入：未同步时棋盘要显示「同步中」 */
   $(G, '#inNetName').value = '小明';
   click(G, $(G, '#btnAskJoin'));                 /* 主动点「加入房间」 */
-  eq($(G, '#selMode').value, 'join', '点「加入房间」应自动切到加入模式');
-  eq($(G, '#rowRoomCode').hidden, false, '加入模式显示房间号输入');
+  eq($(G, '#rowRoomCode').hidden, false, '点「加入房间」后才出现房号输入框');
   $(G, '#inRoomCode').value = room;
   click(G, $(G, '#btnJoinRoom'));
   eq(syncing(G), true, '客人未拿到房主局面时，棋盘应为「同步中」状态');
@@ -151,7 +150,7 @@ async function waitFor(fn, ms, what){
   click(G, $(G, '#btnLeaveRoom'));
   await sleep(400);
   eq($(G, '#roomBar').hidden, true, '退出后隐藏房间栏');
-  eq($(G, '#selMode').value, 'local', '退出后回到同屏模式');
+  eq($(G, '#rowCreate').hidden, false, '退出后重新显示「创建房间 / 加入房间」按钮');
   click(G, $$(G, '#board .card.back')[0]);
   eq(upCount(G), 1, '退出房间后本地同屏可以正常翻牌');
 
