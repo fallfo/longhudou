@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f5e7cd">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="description" content="龙虎斗（兽棋版）· 同屏双人怀旧纸牌游戏，单文件离线可玩">
+<title>龙虎斗 · 兽棋版（同屏双人）</title>
+<style>
+  :root{
+    --paper:#f5e7cd; --ink:#2b1d13; --gold:#c9a227;
+    --dragon:#2c6f9c; --tiger:#c25a1c;
+    --slot:rgba(255,240,210,.08);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    background:
+      radial-gradient(circle at 18% 6%, #fff8e8 0%, rgba(255,248,232,0) 46%),
+      radial-gradient(circle at 88% 84%, #eedbb5 0%, rgba(238,219,181,0) 42%),
+      var(--paper);
+    color:var(--ink);
+    font-family:"Songti SC","Noto Serif SC",Georgia,"SimSun","STSong",serif;
+    -webkit-text-size-adjust:100%;
+    padding:10px 10px 30px;
+    min-height:100vh;
+  }
+  .wrap{max-width:480px;margin:0 auto}
+
+  /* ── 顶部标题 ── */
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:2px 2px 8px}
+  .title{font-size:23px;font-weight:700;letter-spacing:.14em;line-height:1.1}
+  .title .sub{display:block;font-size:11px;font-weight:400;letter-spacing:.18em;opacity:.62;margin-top:3px}
+  .ghost{
+    font-family:inherit;font-size:13px;color:#5b3a22;background:rgba(255,255,255,.5);
+    border:1px solid rgba(91,58,34,.32);border-radius:999px;padding:7px 13px;cursor:pointer
+  }
+  .ghost:active{background:rgba(255,255,255,.85)}
+
+  /* ── 状态横幅 ── */
+  .banner{
+    display:flex;align-items:center;gap:8px;
+    padding:9px 12px;border-radius:10px;font-size:14px;line-height:1.35;
+    background:rgba(255,255,255,.55);border:1px solid rgba(91,58,34,.22);
+    box-shadow:0 1px 0 rgba(255,255,255,.7) inset;
+  }
+  .banner .dot{width:10px;height:10px;border-radius:50%;flex:0 0 auto;background:#9a8a76}
+  .banner.dragon .dot{background:var(--dragon);box-shadow:0 0 0 3px rgba(44,111,156,.18)}
+  .banner.tiger .dot{background:var(--tiger);box-shadow:0 0 0 3px rgba(194,90,28,.18)}
+  .banner.over{background:#fff3d6;border-color:var(--gold)}
+  .banner b{font-weight:700}
+
+  /* ── 棋盘 ── */
+  .boardwrap{display:flex;justify-content:center;margin:10px 0 8px}
+  .board{
+    --n:4; --gap:5px; --pad:8px; --ratio:0.6416;
+    width:100%;max-width:460px;
+    display:grid;grid-template-columns:repeat(var(--n),1fr);
+    gap:var(--gap);padding:var(--pad);
+    background:linear-gradient(160deg,#6f3c25,#452013);
+    border:2px solid #caa24a;border-radius:13px;
+    box-shadow:0 7px 20px rgba(60,30,10,.34),inset 0 0 26px rgba(0,0,0,.42);
+  }
+  .cell{
+    position:relative;aspect-ratio:var(--ratio);border-radius:7px;background:var(--slot);
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,.16)
+  }
+  .cell.tgt-move::after{
+    content:"";position:absolute;inset:30%;border-radius:50%;
+    background:rgba(48,168,96,.9);box-shadow:0 0 9px rgba(48,168,96,.85);
+    animation:pulse 1.05s ease-in-out infinite;pointer-events:none
+  }
+  .cell.tgt-cap::after{
+    content:"";position:absolute;inset:0;border-radius:7px;
+    box-shadow:inset 0 0 0 3px #e0362f,0 0 10px rgba(224,54,47,.7);
+    animation:pulse 1.05s ease-in-out infinite;pointer-events:none
+  }
+  @keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+
+  .card{
+    position:absolute;inset:0;border-radius:7px;overflow:hidden;
+    display:flex;align-items:center;justify-content:center;
+    user-select:none;cursor:pointer
+  }
+  .card.back{
+    background:repeating-linear-gradient(45deg,#7d1f1f,#7d1f1f 7px,#93292a 7px,#93292a 14px);
+    box-shadow:inset 0 0 0 2px #d8b45c,0 1px 3px rgba(0,0,0,.34)
+  }
+  .card.back .backmark{
+    color:#eccd7a;font-weight:700;letter-spacing:.04em;
+    font-size:calc(var(--cs,42px) * .30);text-shadow:0 1px 0 rgba(0,0,0,.45)
+  }
+  .card.up{
+    background:linear-gradient(180deg,#fdf4e2,#f1e0c0);
+    box-shadow:inset 0 0 0 2px var(--side-color),0 1px 3px rgba(0,0,0,.34)
+  }
+  .card.up.dragon{--side-color:var(--dragon)}
+  .card.up.tiger{--side-color:var(--tiger)}
+  .card.up .wm{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-size:calc(var(--cs,42px) * .82);font-weight:700;color:var(--side-color);opacity:.15
+  }
+  .card.up .nm{
+    position:relative;z-index:1;font-weight:700;color:#241609;line-height:1.05;text-align:center;
+    font-size:calc(var(--cs,42px) * .32);letter-spacing:-.01em
+  }
+  .card.up.len3 .nm{font-size:calc(var(--cs,42px) * .245)}
+  .card.up .num{
+    position:absolute;z-index:2;top:3.5%;right:5%;
+    width:calc(var(--cs,42px) * .28);height:calc(var(--cs,42px) * .28);
+    border-radius:50%;background:#1c7a4e;color:#fff;
+    display:flex;align-items:center;justify-content:center;
+    font-size:calc(var(--cs,42px) * .155);font-weight:700;
+    box-shadow:0 1px 2px rgba(0,0,0,.3);font-family:Georgia,serif
+  }
+  .card.up .sidetag{
+    position:absolute;z-index:2;top:4%;left:6%;
+    font-size:calc(var(--cs,42px) * .145);color:var(--side-color);opacity:.8
+  }
+  .card.up.king{box-shadow:inset 0 0 0 2px var(--gold),0 0 0 2px rgba(201,162,39,.3),0 1px 3px rgba(0,0,0,.34)}
+  .card.up.special .nm::after{content:"★";font-size:.5em;vertical-align:super;color:var(--gold)}
+  /* 画片插画牌面 */
+  .card.art{padding:0;background:#f7ecd7}
+  .card.art img{width:100%;height:100%;object-fit:cover;display:block}
+  .cell.sel .card{outline:3px solid #2f6bff;outline-offset:-3px}
+  .card.pop{animation:pop .24s ease-out}
+  @keyframes pop{0%{transform:scale(.74);opacity:.25}100%{transform:none;opacity:1}}
+  .card.shake{animation:shake .3s}
+  @keyframes shake{0%,100%{transform:none}25%{transform:translateX(-3px)}75%{transform:translateX(3px)}}
+
+  .hint{font-size:12.5px;line-height:1.5;opacity:.78;padding:0 3px 10px;min-height:34px}
+
+  /* ── 玩家信息 ── */
+  .players{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+  .pcard{
+    background:rgba(255,255,255,.56);border:1px solid rgba(91,58,34,.2);
+    border-radius:10px;padding:8px 9px;font-size:12px;line-height:1.45;min-height:74px
+  }
+  .pcard.active{background:#fff4d8;border-color:var(--gold);box-shadow:0 0 0 2px rgba(201,162,39,.22)}
+  .pcard .pname{font-weight:700;font-size:13.5px;display:flex;align-items:center;gap:5px}
+  .pcard .pname .cdot{width:9px;height:9px;border-radius:50%;background:#9a8a76;flex:0 0 auto}
+  .pcard.dragon .pname .cdot{background:var(--dragon)}
+  .pcard.tiger .pname .cdot{background:var(--tiger)}
+  .pcard .pmeta{opacity:.72;margin-top:2px}
+  .chips{display:flex;flex-wrap:wrap;gap:3px;margin-top:5px}
+  .chip{
+    font-size:10.5px;padding:1px 5px;border-radius:5px;background:#f6ead2;
+    border:1px solid rgba(91,58,34,.25);white-space:nowrap
+  }
+  .chip.dragon{border-color:rgba(44,111,156,.55);color:#1d5c84}
+  .chip.tiger{border-color:rgba(194,90,28,.55);color:#9c4a12}
+
+  /* ── 控件 ── */
+  .controls{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+  .controls button{
+    font-family:inherit;font-size:14px;padding:11px 6px;border-radius:10px;cursor:pointer;
+    background:linear-gradient(180deg,#fffaf0,#f0e0c2);color:#43291a;
+    border:1px solid rgba(91,58,34,.4);box-shadow:0 1px 0 rgba(255,255,255,.8) inset
+  }
+  .controls button:active{background:#e9d7b4}
+  .controls button:disabled{opacity:.42}
+
+  .panel{
+    background:rgba(255,255,255,.56);border:1px solid rgba(91,58,34,.2);
+    border-radius:10px;padding:10px 11px;margin-bottom:10px;font-size:13px
+  }
+  .panel h3{margin:0 0 8px;font-size:13px;letter-spacing:.08em;font-weight:700}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px dashed rgba(91,58,34,.2)}
+  .row:first-of-type{border-top:0}
+  .row label{flex:0 0 auto}
+  .row select,.row input[type=text]{
+    font-family:inherit;font-size:13px;padding:5px 7px;border-radius:7px;
+    border:1px solid rgba(91,58,34,.35);background:#fffdf7;color:var(--ink);min-width:0
+  }
+  .row input[type=text]{width:110px}
+  .row input[type=checkbox]{width:18px;height:18px;accent-color:#8a5a2b}
+  .note{font-size:11.5px;opacity:.68;line-height:1.5;margin-top:6px}
+
+  .logbox{background:rgba(255,255,255,.5);border:1px solid rgba(91,58,34,.18);border-radius:10px;padding:8px 10px}
+  .logbox .lt{font-size:12px;letter-spacing:.08em;opacity:.66;margin-bottom:4px}
+  .logbox ol{margin:0;padding-left:18px;max-height:168px;overflow:auto;font-size:12.5px;line-height:1.62}
+  .logbox li::marker{opacity:.5}
+  .logbox li.dragon{color:#1d5c84}
+  .logbox li.tiger{color:#9c4a12}
+  .logbox li.sys{color:#6b5a45}
+
+  footer{margin-top:16px;font-size:11px;line-height:1.6;opacity:.6;text-align:center}
+
+  /* ── 规则弹窗 ── */
+  .modal{
+    position:fixed;inset:0;background:rgba(40,22,10,.55);z-index:50;
+    display:none;align-items:flex-end;justify-content:center
+  }
+  .modal.open{display:flex}
+  .sheet{
+    background:var(--paper);width:100%;max-width:520px;max-height:88vh;overflow:auto;
+    border-radius:16px 16px 0 0;padding:16px 16px 26px;
+    box-shadow:0 -6px 24px rgba(0,0,0,.35)
+  }
+  .sheet h2{margin:0 0 10px;font-size:17px;letter-spacing:.1em}
+  .sheet h4{margin:15px 0 5px;font-size:13.5px;letter-spacing:.06em}
+  .sheet p,.sheet li{font-size:13px;line-height:1.72;margin:5px 0}
+  .sheet ul,.sheet ol{padding-left:20px;margin:5px 0}
+  .sheet table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+  .sheet th,.sheet td{border:1px solid rgba(91,58,34,.28);padding:4px 5px;text-align:center}
+  .sheet th{background:rgba(201,162,39,.16)}
+  .sheet .note{font-size:11.5px;opacity:.7}
+  .sheet .close{
+    font-family:inherit;font-size:14px;width:100%;margin-top:16px;padding:11px;border-radius:10px;
+    background:linear-gradient(180deg,#fffaf0,#efdec0);border:1px solid rgba(91,58,34,.4);color:#43291a;cursor:pointer
+  }
+  .tag-d{color:#1d5c84;font-weight:700}
+  .tag-t{color:#9c4a12;font-weight:700}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <div class="title">龙虎斗<span class="sub">兽棋版 · 同屏双人</span></div>
+    <button class="ghost" id="btnRules" type="button">规则</button>
+  </div>
+
+  <div class="banner" id="banner"><span class="dot"></span><span id="bannerText">准备开始</span></div>
+
+  <div class="boardwrap">
+    <div class="board" id="board" aria-label="龙虎斗棋盘"></div>
+  </div>
+
+  <div class="hint" id="hint"></div>
+
+  <div class="players">
+    <div class="pcard" id="pA">
+      <div class="pname"><span class="cdot"></span><span id="nameA_lbl">玩家1</span></div>
+      <div class="pmeta" id="metaA">阵营未定</div>
+      <div class="chips" id="chipsA"></div>
+    </div>
+    <div class="pcard" id="pB">
+      <div class="pname"><span class="cdot"></span><span id="nameB_lbl">玩家2</span></div>
+      <div class="pmeta" id="metaB">阵营未定</div>
+      <div class="chips" id="chipsB"></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="btnUndo" type="button">悔棋</button>
+    <button id="btnNew" type="button">新开一局</button>
+    <button id="btnSet" type="button">设置</button>
+  </div>
+
+  <div class="panel" id="settingsPanel" hidden>
+    <h3>设置</h3>
+    <div class="row">
+      <label for="selSize">棋盘</label>
+      <select id="selSize">
+        <option value="4">4 × 4（整版，最贴近原画片）</option>
+        <option value="5">5 × 5（宽松些）</option>
+        <option value="6">6 × 6（走位自由）</option>
+      </select>
+    </div>
+    <div class="row">
+      <label for="chkDiag">允许斜走一格</label>
+      <input type="checkbox" id="chkDiag">
+    </div>
+    <div class="row">
+      <label for="chkTiger">小王虎通吃所有龙牌</label>
+      <input type="checkbox" id="chkTiger">
+    </div>
+    <div class="row">
+      <label for="selKing">王能吃对方最小牌吗</label>
+      <select id="selKing">
+        <option value="0" selected>不能（斗兽棋式，推荐）</option>
+        <option value="1">能（纯按级别）</option>
+      </select>
+    </div>
+    <div class="row">
+      <label for="selDraw">无吃子判和</label>
+      <select id="selDraw">
+        <option value="60" selected>连续 60 手无吃子判和（推荐）</option>
+        <option value="100">连续 100 手无吃子判和</option>
+        <option value="0">不限（残局可能磨很久）</option>
+      </select>
+    </div>
+    <div class="row">
+      <label for="chkArt">牌面用画片插画</label>
+      <input type="checkbox" id="chkArt" checked>
+    </div>
+    <div class="row">
+      <label for="inNameA">玩家1 昵称</label>
+      <input type="text" id="inNameA" maxlength="8" value="玩家1">
+    </div>
+    <div class="row">
+      <label for="inNameB">玩家2 昵称</label>
+      <input type="text" id="inNameB" maxlength="8" value="玩家2">
+    </div>
+    <div class="note">棋盘与规则改动后，点「新开一局」生效（默认：只走上下左右；王吃不了对方最小的牌、但对方最小牌能反杀王；小王虎只吃龙王，不通吃；连续 60 手无吃子判和）。「牌面用画片插画」是纯外观开关，随时切换、不用重开。</div>
+  </div>
+
+  <div class="logbox">
+    <div class="lt">对局记录</div>
+    <ol id="log"></ol>
+  </div>
+
+  <footer>民间怀旧玩法复刻 · 单文件离线可玩 · 规则各地略有差异</footer>
+</div>
+
+<div class="modal" id="rulesModal">
+  <div class="sheet">
+    <h2>龙虎斗（兽棋版）规则</h2>
+    <p>上世纪八九十年代流行于中国大陆的「洋画片」纸牌游戏。一整张画片共 16 张牌，龙、虎各 8 张，玩法就是<b>斗兽棋（兽棋）的翻牌版</b>。</p>
+
+    <h4>牌面与级别（从大到小）</h4>
+    <table>
+      <tr><th>级别</th><th>龙方</th><th>虎方</th></tr>
+      <tr><td>最大</td><td class="tag-d">龙王(1)</td><td class="tag-t">虎王(9)</td></tr>
+      <tr><td>2</td><td class="tag-d">神龙(2)</td><td class="tag-t">东北虎(10)</td></tr>
+      <tr><td>3</td><td class="tag-d">金龙(3)</td><td class="tag-t">大头虎(11)</td></tr>
+      <tr><td>4</td><td class="tag-d">青龙(4)</td><td class="tag-t">下山虎(12)</td></tr>
+      <tr><td>5</td><td class="tag-d">赤龙(5)</td><td class="tag-t">绿虎(13)</td></tr>
+      <tr><td>6</td><td class="tag-d">白龙(6)</td><td class="tag-t">妖虎(14)</td></tr>
+      <tr><td>7</td><td class="tag-d">风雨龙(7)</td><td class="tag-t">白虎(15)</td></tr>
+      <tr><td>最小</td><td class="tag-d">变形龙(8)</td><td class="tag-t">小王虎(16)</td></tr>
+    </table>
+    <p class="note">同一行的两张牌级别相同，互相吃不了（龙王吃不了虎王，神龙吃不了东北虎……）。另外，照斗兽棋「象吃不了鼠」的规矩，<b>王也吃不了对方最小的那张牌</b>：龙王吃不了小王虎、虎王吃不了变形龙（可在设置里改回纯级别制）。</p>
+
+    <h4>开局</h4>
+    <ol>
+      <li>16 张牌洗匀，<b>背面朝上乱排</b>在桌上（本作默认摆成 4×4 一整版）。</li>
+      <li>先手随便翻开一张：<b>翻到哪一方，先手就用哪一方</b>，另一方用剩下的阵营。</li>
+    </ol>
+
+    <h4>每回合三选一</h4>
+    <ul>
+      <li><b>翻牌</b>：翻开任意一张暗牌，这张牌翻开后属于它自己那一方。</li>
+      <li><b>走牌</b>：自己的明牌走一格到空格（默认只能上下左右，不能跳牌）。</li>
+      <li><b>吃牌</b>：用自己的牌吃掉相邻的对方明牌，级别大的吃级别小的；同级别不能互吃。</li>
+    </ul>
+
+    <h4>特殊牌（相当于斗兽棋的「鼠吃象」）</h4>
+    <ul>
+      <li><b>龙王吃不了小王虎、虎王吃不了变形龙</b>——最强的牌反而拿对方最小的那张没办法，这是<b>单向克制</b>（设置里可改成「能」，即纯按级别吃）。</li>
+      <li><b>变形龙（8）能吃虎王（9）</b>——龙方最小的牌可以反杀虎方最大的牌。</li>
+      <li><b>小王虎（16）能吃龙王（1）</b>——虎方最小的牌可以反杀龙方最大的牌。</li>
+      <li>其余龙／虎（神龙、金龙、东北虎……）照样能吃掉对方最小的那张牌。</li>
+      <li>（可选，见设置）有的地方玩「小王虎通吃所有龙牌」。</li>
+    </ul>
+
+    <h4>胜负</h4>
+    <ul>
+      <li>吃掉对方<b>全部 8 张牌</b>者胜（含还没翻开的暗牌）。</li>
+      <li>轮到某方时既无牌可翻、又无子可动，该方判负。</li>
+      <li>判<b>和棋</b>的两种情况：① 牌全部翻开后，双方剩下的牌彼此都吃不动（只剩同级牌之类的死局）；② 连续多手都没有吃到牌（默认 60 手，可在设置里改成 100 手或「不限」）。</li>
+    </ul>
+
+    <h4>操作</h4>
+    <ul>
+      <li>点暗牌＝翻牌；点自己的明牌＝选中（绿点可走、红圈可吃）；点目标格＝执行。</li>
+      <li>再点一次已选中的牌，或点空白处＝取消选择。</li>
+    </ul>
+
+    <h4>关于规则出处</h4>
+    <p>规则整理自公开的怀旧资料（含百度百科「龙虎斗（纸质游戏牌）」条目，以及 2018 年网易／新浪的怀旧文章），并非当年印刷说明书；各地在「能否斜走」「小王虎通吃与否」「棋盘大小」上说法不一，本作把有争议的部分做成了设置项，你们群里可以按自己那套约定来。</p>
+    <p class="note">牌面插画：切自你提供的那张「龍虎鬥遊戲牌」画片（第 15 张图上印的是「<b>良虎</b>」，而百科条目写作「白虎」；右下角还带有原图的「AI生成」水印）。不想看图就把设置里的「牌面用画片插画」取消，会切回文字牌面。</p>
+    <p class="note">本页面为民间玩法复刻，仅供怀旧娱乐，请勿用于赌博。</p>
+    <button class="close" id="btnCloseRules" type="button">知道了</button>
+  </div>
+</div>
+
+<script id="engine">
+/*==ENGINE_START==*/
+/* 纯规则引擎：不依赖 DOM，便于单测 */
+var SIDES = { D:{key:'D',cn:'龙方',ch:'龙'}, T:{key:'T',cn:'虎方',ch:'虎'} };
+
+/* 编号 1-8 = 龙，9-16 = 虎；rank 1 最大，rank 8 最小 */
+var CARDS = [
+  { id:'D1', side:'D', rank:1, num:1,  name:'龙王'   },
+  { id:'D2', side:'D', rank:2, num:2,  name:'神龙'   },
+  { id:'D3', side:'D', rank:3, num:3,  name:'金龙'   },
+  { id:'D4', side:'D', rank:4, num:4,  name:'青龙'   },
+  { id:'D5', side:'D', rank:5, num:5,  name:'赤龙'   },
+  { id:'D6', side:'D', rank:6, num:6,  name:'白龙'   },
+  { id:'D7', side:'D', rank:7, num:7,  name:'风雨龙' },
+  { id:'D8', side:'D', rank:8, num:8,  name:'变形龙' },
+  { id:'T1', side:'T', rank:1, num:9,  name:'虎王'   },
+  { id:'T2', side:'T', rank:2, num:10, name:'东北虎' },
+  { id:'T3', side:'T', rank:3, num:11, name:'大头虎' },
+  { id:'T4', side:'T', rank:4, num:12, name:'下山虎' },
+  { id:'T5', side:'T', rank:5, num:13, name:'绿虎'   },
+  { id:'T6', side:'T', rank:6, num:14, name:'妖虎'   },
+  { id:'T7', side:'T', rank:7, num:15, name:'白虎'   },
+  { id:'T8', side:'T', rank:8, num:16, name:'小王虎' }
+];
+var CARD_MAP = {};
+CARDS.forEach(function(c){ CARD_MAP[c.id] = c; });
+
+function otherSide(s){ return s === 'D' ? 'T' : 'D'; }
+function otherPlayer(p){ return p === 'A' ? 'B' : 'A'; }
+
+function shuffle(arr, rand){
+  var r = rand || Math.random;
+  for(var i = arr.length - 1; i > 0; i--){
+    var j = Math.floor(r() * (i + 1));
+    var t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+  }
+  return arr;
+}
+
+/* 生成一局：n×n 棋盘，16 张牌随机落位，其余格为空 */
+function createGame(opts){
+  opts = opts || {};
+  var n = opts.n || 4;
+  var rand = opts.rand || Math.random;
+  var total = n * n;
+  var cells = new Array(total), i;
+  for(i = 0; i < total; i++) cells[i] = null;
+
+  var slots = [];
+  for(i = 0; i < total; i++) slots.push(i);
+  shuffle(slots, rand);
+  var deck = CARDS.slice();
+  shuffle(deck, rand);
+  for(i = 0; i < 16; i++){
+    cells[slots[i]] = { cardId: deck[i].id, up:false };
+  }
+  return {
+    n:n, total:total,
+    diagonal:!!opts.diagonal,
+    tigerEatsAll:!!opts.tigerEatsAll,
+    kingEatsWeakest:!!opts.kingEatsWeakest,
+    noCaptureLimit:(opts.noCaptureLimit === undefined ? 60 : opts.noCaptureLimit) | 0,
+    sinceCapture:0,
+    cells:cells,
+    turn:'A',
+    sideA:null, sideB:null,
+    names:{ A:opts.nameA || '玩家1', B:opts.nameB || '玩家2' },
+    captured:{ A:[], B:[] },
+    moves:0,
+    log:[],
+    over:null
+  };
+}
+
+function playerSide(state, player){ return player === 'A' ? state.sideA : state.sideB; }
+function pname(state, player){ return state.names[player] || (player === 'A' ? '玩家1' : '玩家2'); }
+function label(state, player){
+  var s = playerSide(state, player);
+  return pname(state, player) + (s ? '（' + SIDES[s].cn + '）' : '');
+}
+
+/* 相邻格：默认上下左右；diagonal 打开后含斜角 */
+function neighbors(state, idx){
+  var n = state.n, r = Math.floor(idx / n), c = idx % n, out = [];
+  for(var dr = -1; dr <= 1; dr++){
+    for(var dc = -1; dc <= 1; dc++){
+      if(dr === 0 && dc === 0) continue;
+      if(!state.diagonal && dr !== 0 && dc !== 0) continue;
+      var rr = r + dr, cc = c + dc;
+      if(rr < 0 || cc < 0 || rr >= n || cc >= n) continue;
+      out.push(rr * n + cc);
+    }
+  }
+  return out;
+}
+
+/* 吃子判定：rank 数字小的强；同级不能互吃。
+   默认照斗兽棋「鼠吃象」的口径：王（最强）吃不了对方最小的那张牌，最小的那张却能反杀王。
+   kingEatsWeakest = true 时改回纯级别制（王也能吃对方最小的牌）。 */
+function canCapture(attackerId, defenderId, tigerEatsAll, kingEatsWeakest){
+  var a = CARD_MAP[attackerId], d = CARD_MAP[defenderId];
+  if(!a || !d) return false;
+  if(a.side === d.side) return false;
+  if(tigerEatsAll && a.side === 'T' && a.rank === 8) return true;                    /* 小王虎通吃龙牌 */
+  if(a.side === 'D' && a.rank === 8 && d.side === 'T' && d.rank === 1) return true;  /* 变形龙吃虎王 */
+  if(a.side === 'T' && a.rank === 8 && d.side === 'D' && d.rank === 1) return true;  /* 小王虎吃龙王 */
+  if(!kingEatsWeakest && a.rank === 1 && d.rank === 8) return false;                 /* 王吃不了对方最小的牌 */
+  return a.rank < d.rank;
+}
+
+/* 当前可行动作 */
+function actionsFor(state, player){
+  var side = playerSide(state, player);
+  var flips = [], moves = [], i, j, t;
+  for(i = 0; i < state.total; i++){
+    var cell = state.cells[i];
+    if(cell && !cell.up) flips.push(i);
+  }
+  if(side){
+    for(j = 0; j < state.total; j++){
+      var from = state.cells[j];
+      if(!from || !from.up) continue;
+      if(CARD_MAP[from.cardId].side !== side) continue;
+      var nb = neighbors(state, j);
+      for(t = 0; t < nb.length; t++){
+        var to = nb[t], target = state.cells[to];
+        if(target === null){
+          moves.push({ from:j, to:to, capture:false });
+        } else if(target.up && CARD_MAP[target.cardId].side !== side &&
+                  canCapture(from.cardId, target.cardId, state.tigerEatsAll, state.kingEatsWeakest)){
+          moves.push({ from:j, to:to, capture:true });
+        }
+      }
+    }
+  }
+  return { flips:flips, moves:moves };
+}
+
+function hasAnyAction(state, player){
+  var a = actionsFor(state, player);
+  return a.flips.length > 0 || a.moves.length > 0;
+}
+
+/* 某一方在场上还剩几张（含未翻开的暗牌）——只用于判歼灭，不用于界面显示 */
+function pieceCount(state, side){
+  var c = 0;
+  for(var i = 0; i < state.total; i++){
+    var cell = state.cells[i];
+    if(cell && CARD_MAP[cell.cardId].side === side) c++;
+  }
+  return c;
+}
+
+function addLog(state, text, player){
+  state.log.push({ text:text, player:player || null });
+}
+
+/* 是否所有牌都已翻开 */
+function allRevealed(state){
+  for(var i = 0; i < state.total; i++){
+    var cell = state.cells[i];
+    if(cell && !cell.up) return false;
+  }
+  return true;
+}
+
+/* 场上是否还存在吃子机会：吃子能力只取决于两张牌的牌面，与位置无关 */
+function anyCapturePossible(state){
+  var dragons = [], tigers = [], i, j;
+  for(i = 0; i < state.total; i++){
+    var cell = state.cells[i];
+    if(!cell) continue;
+    var card = CARD_MAP[cell.cardId];
+    if(card.side === 'D') dragons.push(card.id);
+    else tigers.push(card.id);
+  }
+  for(i = 0; i < dragons.length; i++){
+    for(j = 0; j < tigers.length; j++){
+      if(canCapture(dragons[i], tigers[j], state.tigerEatsAll, state.kingEatsWeakest)) return true;
+      if(canCapture(tigers[j], dragons[i], state.tigerEatsAll, state.kingEatsWeakest)) return true;
+    }
+  }
+  return false;
+}
+
+function checkOver(state){
+  if(state.over) return;
+  if(!state.sideA || !state.sideB) return;
+
+  var sides = ['D','T'], i;
+  for(i = 0; i < sides.length; i++){
+    var side = sides[i];
+    if(pieceCount(state, side) === 0){
+      var loser = state.sideA === side ? 'A' : 'B';
+      state.over = { winner:otherPlayer(loser), loser:loser, reason:'吃光了对方全部棋子' };
+      return;
+    }
+  }
+  if(!hasAnyAction(state, state.turn)){
+    state.over = { winner:otherPlayer(state.turn), loser:state.turn, reason:'对方无棋可走' };
+    return;
+  }
+  /* 死局：牌全翻开后，双方谁也无法再吃到对方任何一张牌 */
+  if(allRevealed(state) && !anyCapturePossible(state)){
+    state.over = { winner:null, draw:true, reason:'剩下的牌互相都吃不动，判和棋' };
+    return;
+  }
+  /* 附加规则：长时间没有吃子，判和棋（避免无意义的来回磨） */
+  if(state.noCaptureLimit > 0 && state.sinceCapture >= state.noCaptureLimit){
+    state.over = { winner:null, draw:true, reason:'连续 ' + state.noCaptureLimit + ' 手没有吃子，判和棋' };
+  }
+}
+
+function advance(state, wasCapture){
+  state.turn = otherPlayer(state.turn);
+  state.moves += 1;
+  state.sinceCapture = wasCapture ? 0 : (state.sinceCapture || 0) + 1;
+  checkOver(state);
+}
+
+function applyFlip(state, idx){
+  if(state.over) return { ok:false, error:'对局已结束' };
+  var cell = state.cells[idx];
+  if(!cell) return { ok:false, error:'这里是空格' };
+  if(cell.up) return { ok:false, error:'这张牌已经翻开了' };
+
+  cell.up = true;
+  var card = CARD_MAP[cell.cardId];
+  var first = state.sideA === null;
+  if(first){
+    state.sideA = card.side;
+    state.sideB = otherSide(card.side);
+    addLog(state, pname(state,'A') + ' 翻开【' + card.name + '】→ ' + pname(state,'A') + '执' +
+      SIDES[card.side].cn + '，' + pname(state,'B') + '执' + SIDES[otherSide(card.side)].cn, 'sys');
+  } else {
+    addLog(state, label(state, state.turn) + ' 翻开【' + card.name + '】', card.side);
+  }
+  advance(state, false);
+  return { ok:true, first:first, cardId:card.id, side:card.side };
+}
+
+function applyMove(state, from, to){
+  if(state.over) return { ok:false, error:'对局已结束' };
+  var acts = actionsFor(state, state.turn), hit = null, i;
+  for(i = 0; i < acts.moves.length; i++){
+    if(acts.moves[i].from === from && acts.moves[i].to === to){ hit = acts.moves[i]; break; }
+  }
+  if(!hit) return { ok:false, error:'这一步不合规则' };
+
+  var mover = state.cells[from];
+  var moverCard = CARD_MAP[mover.cardId];
+  var target = state.cells[to];
+  var captured = null;
+
+  if(target === null){
+    state.cells[to] = mover;
+    state.cells[from] = null;
+    addLog(state, label(state, state.turn) + ' 走【' + moverCard.name + '】', moverCard.side);
+  } else {
+    captured = CARD_MAP[target.cardId];
+    state.captured[state.turn].push(target.cardId);
+    state.cells[to] = mover;
+    state.cells[from] = null;
+    addLog(state, label(state, state.turn) + ' 【' + moverCard.name + '】吃【' + captured.name + '】', moverCard.side);
+  }
+  advance(state, !!captured);
+  return { ok:true, capture:!!captured, capturedId:captured ? captured.id : null, side:moverCard.side };
+}
+/*==ENGINE_END==*/
+</script>
+
+<script id="art">
+/* 牌面插画：上面那张画片的 16 张卡图，切成小图后转 base64 内嵌，保持「单文件、离线可玩」。
+   键名 = 牌 id（D1..D8 为龙 1-8，T1..T8 为虎 9-16）。由 tools/slice-sheet.ps1 生成。 */
+var CARD_ART = { /*==ART_DATA==*/ };
+/* 卡图的宽/高比（切图时统一过，页面按这个比例显示，所以不会裁成方形） */
+var CARD_RATIO = /*==ART_RATIO==*/0.6416;
+</script>
+
+<script id="ui">
+(function(){
+  'use strict';
+
+  var $ = function(id){ return document.getElementById(id); };
+  var boardEl = $('board'), logEl = $('log'), bannerEl = $('banner'), bannerText = $('bannerText'), hintEl = $('hint');
+
+  var state = null;      /* 当前对局 */
+  var history = [];      /* 悔棋快照 */
+  var sel = null;        /* 已选中的格子 */
+  var anim = null;       /* { idx, type } */
+  var artOn = true;      /* 是否用画片插画牌面（纯显示，不影响规则） */
+
+  function clone(o){ return JSON.parse(JSON.stringify(o)); }
+
+  function settings(){
+    return {
+      n: parseInt($('selSize').value, 10) || 4,
+      diagonal: $('chkDiag').checked,
+      tigerEatsAll: $('chkTiger').checked,
+      kingEatsWeakest: $('selKing').value === '1',
+      noCaptureLimit: parseInt($('selDraw').value, 10) || 0,
+      nameA: ($('inNameA').value || '玩家1').slice(0, 8),
+      nameB: ($('inNameB').value || '玩家2').slice(0, 8)
+    };
+  }
+
+  function newGame(){
+    var s = settings();
+    state = createGame(s);
+    history = []; sel = null; anim = null;
+    render();
+  }
+
+  function pushHistory(){ history.push(clone(state)); if(history.length > 200) history.shift(); }
+
+  function legalFrom(i){
+    if(i === null) return [];
+    var all = actionsFor(state, state.turn).moves;
+    return all.filter(function(m){ return m.from === i; });
+  }
+
+  function doFlip(idx){
+    pushHistory();
+    var r = applyFlip(state, idx);
+    if(!r.ok){ history.pop(); flash(idx); return; }
+    anim = { idx:idx, type:'flip' };
+    sel = null;
+    render();
+  }
+
+  function doMove(from, to){
+    pushHistory();
+    var r = applyMove(state, from, to);
+    if(!r.ok){ history.pop(); flash(from); return; }
+    anim = { idx:to, type:r.capture ? 'cap' : 'move' };
+    sel = null;
+    render();
+  }
+
+  function flash(idx){
+    var el = boardEl.querySelector('.cell[data-i="' + idx + '"] .card');
+    if(!el) return;
+    el.classList.remove('shake');
+    void el.offsetWidth;
+    el.classList.add('shake');
+  }
+
+  function undo(){
+    if(!history.length) return;
+    state = history.pop();
+    sel = null; anim = null;
+    render();
+  }
+
+  /* ── 渲染 ── */
+  function cardEl(cell){
+    var card = CARD_MAP[cell.cardId];
+    var d = document.createElement('div');
+    if(!cell.up){
+      d.className = 'card back';
+      d.innerHTML = '<span class="backmark">龙虎</span>';
+      return d;
+    }
+    var sideCls = card.side === 'D' ? 'dragon' : 'tiger';
+    if(artOn && CARD_ART[card.id]){
+      d.className = 'card up art ' + sideCls;
+      var img = document.createElement('img');
+      img.src = CARD_ART[card.id];
+      img.alt = card.name;
+      img.draggable = false;
+      d.appendChild(img);
+      return d;
+    }
+    d.className = 'card up ' + sideCls + (card.name.length > 2 ? ' len3' : '') +
+      (card.rank === 1 ? ' king' : '') + (card.rank === 8 ? ' special' : '');
+    d.innerHTML =
+      '<span class="wm">' + (card.side === 'D' ? '龙' : '虎') + '</span>' +
+      '<span class="sidetag">' + SIDES[card.side].ch + '</span>' +
+      '<span class="num">' + card.num + '</span>' +
+      '<span class="nm">' + card.name + '</span>';
+    return d;
+  }
+
+  function render(){
+    boardEl.style.setProperty('--n', state.n);
+    boardEl.innerHTML = '';
+
+    var tgtMap = {};
+    legalFrom(sel).forEach(function(m){ tgtMap[m.to] = m.capture ? 'tgt-cap' : 'tgt-move'; });
+
+    for(var i = 0; i < state.total; i++){
+      var cell = state.cells[i];
+      var c = document.createElement('div');
+      c.className = 'cell';
+      c.dataset.i = String(i);
+      if(sel === i) c.classList.add('sel');
+      if(tgtMap[i]) c.classList.add(tgtMap[i]);
+      if(cell) c.appendChild(cardEl(cell));
+      boardEl.appendChild(c);
+    }
+
+    if(anim){
+      var el = boardEl.querySelector('.cell[data-i="' + anim.idx + '"] .card');
+      if(el) el.classList.add('pop');
+      anim = null;
+    }
+
+    renderStatus();
+    renderPlayers();
+    renderLog();
+    updateButtons();
+    syncSize();                       /* 立刻算一次，比例与格子尺寸不用等下一帧 */
+    requestAnimationFrame(syncSize);  /* 布局稳定后再校准一次 */
+  }
+
+  function renderStatus(){
+    bannerEl.className = 'banner';
+    if(state.over){
+      bannerEl.classList.add('over');
+      hintEl.textContent = '点「新开一局」再来一盘，或「悔棋」回到上一步。';
+      if(state.over.draw){
+        bannerText.innerHTML = '🤝 <b>和棋</b> · ' + state.over.reason;
+        return;
+      }
+      var w = state.over.winner;
+      bannerText.innerHTML = '🎉 <b>' + pname(state, w) + '（' + SIDES[playerSide(state, w)].cn + '）胜</b> · ' + state.over.reason;
+      return;
+    }
+    var side = playerSide(state, state.turn);
+    if(!side){
+      bannerText.innerHTML = '<b>' + pname(state, 'A') + '</b> 先手：点任意一张暗牌翻开，翻到哪一方就用哪一方';
+      hintEl.textContent = '16 张牌全部背面朝上，先翻牌定阵营。';
+      return;
+    }
+    bannerEl.classList.add(side === 'D' ? 'dragon' : 'tiger');
+    bannerText.innerHTML = '轮到 <b>' + pname(state, state.turn) + '（' + SIDES[side].cn + '）</b> · 第 ' + (state.moves + 1) + ' 手';
+    var silence = (state.noCaptureLimit > 0 && state.sinceCapture > 0)
+      ? '（已连续 ' + state.sinceCapture + ' 手无吃子，满 ' + state.noCaptureLimit + ' 手判和）'
+      : '';
+    if(sel === null){
+      hintEl.textContent = '点自己的明牌选中它（绿点＝可走，红圈＝可吃）；也可以点一张暗牌翻开。' + silence;
+    } else {
+      var t = legalFrom(sel);
+      if(!t.length){
+        hintEl.textContent = '这张【' + CARD_MAP[state.cells[sel].cardId].name + '】没有可走或可吃的位置，换一张试试。' + silence;
+      } else {
+        var canMove = t.some(function(m){ return !m.capture; });
+        var canCap = t.some(function(m){ return m.capture; });
+        hintEl.textContent = '已选中【' + CARD_MAP[state.cells[sel].cardId].name + '】：' +
+          (canMove ? '点绿点走子' : '') + (canMove && canCap ? '，' : '') + (canCap ? '点红圈吃子' : '') + '；再点一次取消。' + silence;
+      }
+    }
+  }
+
+  function renderPlayers(){
+    ['A','B'].forEach(function(p){
+      var side = playerSide(state, p);
+      var box = $(p === 'A' ? 'pA' : 'pB');
+      box.className = 'pcard' + (side === 'D' ? ' dragon' : side === 'T' ? ' tiger' : '') +
+        (!state.over && state.turn === p ? ' active' : '');
+      $(p === 'A' ? 'nameA_lbl' : 'nameB_lbl').textContent = pname(state, p);
+
+      var upCount = 0;
+      for(var i = 0; i < state.total; i++){
+        var cell = state.cells[i];
+        if(cell && cell.up && CARD_MAP[cell.cardId].side === side) upCount++;
+      }
+      $(p === 'A' ? 'metaA' : 'metaB').textContent = side
+        ? SIDES[side].cn + ' · 场上明牌 ' + upCount + ' 张'
+        : '阵营未定';
+
+      var chips = state.captured[p].map(function(id){
+        var card = CARD_MAP[id];
+        return '<span class="chip ' + (card.side === 'D' ? 'dragon' : 'tiger') + '">' + card.name + '</span>';
+      }).join('');
+      $(p === 'A' ? 'chipsA' : 'chipsB').innerHTML = chips
+        ? '<span class="chip" style="border:0;background:transparent;padding-left:0">已吃：</span>' + chips
+        : '';
+    });
+  }
+
+  function renderLog(){
+    var items = state.log.slice(-40).reverse();
+    logEl.innerHTML = items.map(function(e){
+      var cls = e.player === 'D' ? 'dragon' : e.player === 'T' ? 'tiger' : 'sys';
+      return '<li class="' + cls + '">' + e.text + '</li>';
+    }).join('');
+  }
+
+  function updateButtons(){
+    $('btnUndo').disabled = history.length === 0;
+  }
+
+  function syncSize(){
+    var n = state.n, gap = 5, pad = 8;
+    var ratio = (typeof CARD_RATIO === 'number' && CARD_RATIO > 0.3) ? CARD_RATIO : 0.6416;
+    boardEl.style.setProperty('--ratio', String(ratio));
+    /* 竖版卡片：先按「整块棋盘高度不超过视口的 62%」算格子宽，再受屏幕宽度限制 */
+    var maxW = Math.min((window.innerWidth || 360) * 0.94, 460);
+    var maxH = Math.max(260, (window.innerHeight || 700) * 0.62);
+    var cellW = ((maxH - pad * 2 - gap * (n - 1)) / n) * ratio;
+    var width = Math.min(maxW, cellW * n + pad * 2 + gap * (n - 1));
+    boardEl.style.width = Math.round(width) + 'px';
+    var first = boardEl.querySelector('.cell');
+    if(!first) return;
+    var w = first.getBoundingClientRect().width;
+    if(w > 0) boardEl.style.setProperty('--cs', w + 'px');
+  }
+
+  /* ── 交互 ── */
+  boardEl.addEventListener('click', function(e){
+    var cellEl = e.target.closest ? e.target.closest('.cell') : null;
+    if(!cellEl) return;
+    var i = parseInt(cellEl.dataset.i, 10);
+    if(state.over) return;
+
+    var cell = state.cells[i];
+    var side = playerSide(state, state.turn);
+
+    if(sel !== null){
+      var hit = legalFrom(sel).filter(function(m){ return m.to === i; })[0];
+      if(hit){ doMove(sel, i); return; }
+    }
+    if(cell && cell.up && side && CARD_MAP[cell.cardId].side === side){
+      sel = (sel === i) ? null : i;
+      render();
+      return;
+    }
+    if(cell && !cell.up){
+      if(sel !== null){ sel = null; render(); return; }
+      doFlip(i);
+      return;
+    }
+    if(sel !== null){ sel = null; render(); }
+  });
+
+  $('btnNew').addEventListener('click', newGame);
+  $('btnUndo').addEventListener('click', undo);
+
+  $('chkArt').addEventListener('change', function(){
+    artOn = $('chkArt').checked;
+    render();
+  });
+
+  $('btnSet').addEventListener('click', function(){
+    var p = $('settingsPanel');
+    p.hidden = !p.hidden;
+  });
+  $('btnRules').addEventListener('click', function(){ $('rulesModal').classList.add('open'); });
+  $('btnCloseRules').addEventListener('click', function(){ $('rulesModal').classList.remove('open'); });
+  $('rulesModal').addEventListener('click', function(e){
+    if(e.target === $('rulesModal')) $('rulesModal').classList.remove('open');
+  });
+
+  $('inNameA').addEventListener('input', function(){
+    state.names.A = ($('inNameA').value || '玩家1').slice(0, 8);
+    renderPlayers();
+  });
+  $('inNameB').addEventListener('input', function(){
+    state.names.B = ($('inNameB').value || '玩家2').slice(0, 8);
+    renderPlayers();
+  });
+
+  window.addEventListener('resize', syncSize);
+  window.addEventListener('orientationchange', function(){ setTimeout(syncSize, 200); });
+
+  newGame();
+})();
+</script>
+</body>
+</html>
