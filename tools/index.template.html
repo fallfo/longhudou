@@ -269,6 +269,7 @@
       <button class="mini" id="btnCopyRoom" type="button">复制</button>
       <button class="mini" id="btnLeaveRoom" type="button">退出</button>
     </div>
+    <div class="row"><label>我的座位</label><span id="netSeat">—</span></div>
     <div class="row"><label>连接</label><span id="netStatus">连接中…</span></div>
     <div class="row"><label>对手</label><span id="netOpp">等待加入…</span></div>
     <div class="row" id="rowViewers" hidden><label>观众</label><span id="netViewers">0 人</span></div>
@@ -1022,6 +1023,7 @@ function lhdSession(cfg){
         notice((m.nm || '玩家') + (r === 'guest' ? ' 加入了房间' : ' 进来观战'));
         pushPeers();
         s.publishState();                       /* 让新来的观众立刻拿到局面 */
+        if(cfg.onRefresh) cfg.onRefresh();      /* 房主界面刷新（例如把对手昵称显示出来） */
       } else if(m.t === 'flip' || m.t === 'move'){
         if(m.id !== s.guestId) return;                       /* 只有坐着的对手能走子 */
         /* 不是对手的回合 / 意图已过期：说明对方看到的局面旧了，直接补发一份最新局面，让它自愈 */
@@ -1391,6 +1393,9 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
       else if(net.peers[i].role === 'guest' || net.peers[i].role === 'host') opp = net.peers[i];
     }
     if(online){
+      $('netSeat').textContent = (net.role === 'host') ? '房主 · 先手（玩家1）'
+        : (net.role === 'guest') ? '对手 · 后手（玩家2）'
+        : (net.role === 'viewer') ? '观众（只能看）' : '—';
       if(net.role === 'viewer'){
         $('netOpp').innerHTML = '<span class="on">观战中</span> · 只能看不能动';
       } else if(opp){
@@ -1427,6 +1432,17 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
     state = st;               /* 房主：就是同一个权威对象；客人/观众：房主发来的快照 */
     history = [];             /* 联机不悔棋 */
     sel = null;
+    /* 用一句人话告诉玩家现在该干嘛 —— 联机没有「开始」按钮，进房即开始 */
+    var mine = net.session ? net.session.canAct() : false;
+    if(net.role === 'viewer'){
+      net.notice = '观战中：只能看，不能操作';
+    } else if(state.over){
+      net.notice = '本局已结束' + (net.role === 'host' ? '，点「新开一局」再来' : '，等房主重开');
+    } else if(mine){
+      net.notice = '轮到你了，点牌操作';
+    } else {
+      net.notice = '已跟上局面，等' + (net.role === 'host' ? '对手' : '房主') + '走完这一步';
+    }
     render();
   }
 
@@ -1449,6 +1465,7 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
       room: room, secret: secret, id: lhdClientId(), name: netMyName(),
       send: function(text){ net.client.publish(topic, text); },
       onState: netOnState,
+      onRefresh: function(){ render(); },
       onNotice: function(t){ net.notice = t; netRender(); },
       onPeers: function(list){ net.peers = list; netRender(); },
       onRole: function(r){ net.role = r; netRender(); },
@@ -1490,7 +1507,9 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
     var i = parseInt(cellEl.dataset.i, 10);
     if(state.over) return;
     if(net.session && !net.session.canAct()){        /* 不是你的回合 / 观战：不能动 */
-      if(net.role === 'viewer'){ net.notice = '观战中只能看'; netRender(); }
+      if(net.role === 'viewer'){ net.notice = '观战中只能看'; }
+      else if(!state.over){ net.notice = '现在轮到' + state.names[state.turn === 'A' ? 'A' : 'B'] + '，等他走完这一步'; }
+      netRender();
       return;
     }
 

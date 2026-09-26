@@ -90,6 +90,10 @@ async function waitFor(fn, ms, what){
   ok($(H, '#bannerText').textContent.indexOf('轮到') >= 0, '房主界面显示轮次');
   ok($(G, '#metaA').textContent.indexOf('场上明牌') >= 0 || $(G, '#metaB').textContent.indexOf('场上明牌') >= 0,
     '客人看得到阵营与明牌信息');
+  eq($(H, '#netSeat').textContent.indexOf('房主') >= 0, true, '房主看到自己的座位是房主');
+  eq($(G, '#netSeat').textContent.indexOf('对手') >= 0, true, '客人看到自己的座位是后手对手');
+  ok(await waitFor(() => $(G, '#roomNotice').textContent.indexOf('轮到你了') >= 0, 15000, '客人被提示“轮到你了”'),
+    '轮到客人时界面明确提示该他动手');
 
   /* 4) 轮到客人：客人翻一张，双方都要同步（房主本地立刻变，客人要等一个来回） */
   if(!await waitFor(() => $(G, '#bannerText').textContent.indexOf('小明') >= 0, 20000, '轮到客人')){ finish(); return; }
@@ -97,6 +101,8 @@ async function waitFor(fn, ms, what){
   click(G, guestBacks[0]);
   if(!await waitFor(() => upCount(H) === 2 && upCount(G) === 2 && boardSig(H) === boardSig(G), 20000, '双方都同步到客人的翻牌')){ finish(); return; }
   eq(boardSig(H), boardSig(G), '客人走子后双方棋盘一致');
+  ok(await waitFor(() => $(G, '#roomNotice').textContent.indexOf('等房主') >= 0, 15000, '客人被提示等房主'),
+    '客人走完后提示“等房主走完这一步”');
 
   /* 5) 第三个人进来观战：只读 */
   $(V, '#inNetName').value = '吃瓜';
