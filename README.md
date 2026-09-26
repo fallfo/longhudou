@@ -162,26 +162,29 @@ GitHub Pages 在国内部分网络下会慢或打不开（DNS 干扰），可以
 
 ## 四、牌面插画
 
-翻开的牌默认显示**画片插画**（龙王红袍、绿虎条纹那套），取自「龍虎鬥遊戲牌」那张画片：图被自动切成 16 张，缩到 180px 宽后转成 base64 **内嵌在 index.html 里**，所以仍然是单文件、离线可玩（代价是体积从 37KB 涨到约 325KB，手机上打开也就是一眨眼）。
+翻开的牌默认显示**画片插画**：图被自动切成 16 张，缩到 180px 宽后转成 base64 **内嵌在 index.html 里**，所以仍然是单文件、离线可玩（当前这副是动漫风格的一套，index.html 约 460KB）。
 
-- **保持原画比例**：切图时把 16 张统一到同一宽高比（约 0.64，只往周围的米黄背景补、不裁画面），页面按这个比例显示竖版卡片；棋盘宽度会自动算，保证整块棋盘高度不超过视口的 62%，4 行卡尽量整版可见。
+- **按牌号对号入座**：不同画片的排列顺序不一样（现在这副按阅读顺序是 `14,9,16,4 / 2,12,6,15 / 8,11,5,1 / 3,13,7,10`），切图脚本用 `LONGHUDOU_LAYOUT` 指定映射，输出文件名始终是**牌号**（`card01.jpg` = 1 号龙王）。
+- **保持原画比例**：切图时把 16 张统一到同一宽高比（当前约 0.77），只往背景补、不裁画面；页面按这个比例显示，棋盘宽度自动适配屏幕。
+- **牌名差异**：这副画片第 3 张印「**金蛟**」、第 15 张印「**良虎**」，而百科条目写作「金龙」「白虎」——本作文字仍按条目。想统一成画片的写法，改 `tools/index.template.html` 里的 `CARDS` 名字即可（连带改测试里的两处断言）。
 - 牌背文字是简体的「**龙虎**」；关掉插画后文字牌面的水印也是简体「龙 / 虎」。
-
 - 不想看图：设置里取消「牌面用画片插画」，立刻切回文字牌面（纯外观开关，不影响规则、不用重开）。
-- 第 15 张图上印的是「**良虎**」，而百科条目写作「白虎」——本作文字仍按条目写成 **白虎**；另外原图右下角带「AI生成」水印，切图时没法去掉，介意的话就用文字牌面。
 
-### 自己重新生成（可选）
+### 换一套画片 / 换回最早的洋画片
 
 ```powershell
-$env:LONGHUDOU_ROOT = 'D:\workspace\longhudou'
-# 1) 把画片另存为 D:\workspace\longhudou\sheet.jpg，然后切图（自动识别 4×4 网格）
+$env:LONGHUDOU_ROOT    = 'D:\workspace\longhudou'
+$env:LONGHUDOU_SHEET   = 'D:\workspace\longhudou\tools\sheet-new.png'  # 你的画片
+$env:LONGHUDOU_LAYOUT  = '14,9,16,4,2,12,6,15,8,11,5,1,3,13,7,10'     # 按阅读顺序写每格是几号牌
+$env:LONGHUDOU_MONTAGE = '1'                                          # 可选：输出核对图（按牌号排列）
 Invoke-Expression (Get-Content -Raw -Encoding UTF8 .\tools\slice-sheet.ps1)
-# 2) 把 16 张小图转 base64 注入模板，生成根目录的 index.html
 Invoke-Expression (Get-Content -Raw -Encoding UTF8 .\tools\embed-art.ps1)
 ```
 
+> 最早的「洋画片」那套卡图保留在 `tools/tiles-classic/`（已 gitignore）。要换回去：把那 16 张拷回 `tools/tiles/`，再跑一次 `embed-art.ps1`。
+
 > 注意：**根目录的 `index.html` 是生成物**（由 `tools/index.template.html` + `tools/tiles/*.jpg` 生成）。
-> 以后要改界面或规则，请改 `tools/index.template.html`，再跑一次 `embed-art.ps1` 重新生成。
+> 以后要改界面、规则或联机逻辑，请改 `tools/index.template.html`，再跑一次 `embed-art.ps1` 重新生成。
 
 ---
 

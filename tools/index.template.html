@@ -214,6 +214,7 @@
   .tag-t{color:#9c4a12;font-weight:700}
 
   /* ── 联机 ── */
+  .boardwrap.syncing .board{opacity:.4;filter:grayscale(.65)}
   .mini{
     font-family:inherit;font-size:12.5px;padding:6px 10px;border-radius:8px;cursor:pointer;
     background:linear-gradient(180deg,#fffaf0,#f0e0c2);color:#43291a;border:1px solid rgba(91,58,34,.4)
@@ -226,6 +227,8 @@
   .roomcode.small{font-size:13px;letter-spacing:.02em;font-weight:400;border:0;background:transparent;color:#2b1d13}
   .on{color:#1c7a4e;font-weight:700}
   .off{color:#b3261e;font-weight:700}
+  .mebadge{font-size:10px;background:#1c7a4e;color:#fff;border-radius:4px;padding:0 4px;vertical-align:middle;font-weight:400}
+  .pcard.me{box-shadow:0 0 0 2px rgba(28,122,78,.35)}
   .row input:disabled,.row select:disabled{opacity:.5}
 </style>
 </head>
@@ -251,7 +254,7 @@
     </div>
     <div class="row">
       <label for="inNetName">我的昵称</label>
-      <input type="text" id="inNetName" maxlength="8" value="玩家" autocomplete="off">
+      <input type="text" id="inNetName" maxlength="8" placeholder="留空则按座位自动命名" autocomplete="off">
     </div>
     <div class="row" id="rowRoomCode" hidden>
       <label for="inRoomCode">房间号</label>
@@ -423,7 +426,7 @@
 
     <h4>关于规则出处</h4>
     <p>规则整理自公开的怀旧资料（含百度百科「龙虎斗（纸质游戏牌）」条目，以及 2018 年网易／新浪的怀旧文章），并非当年印刷说明书；各地在「能否斜走」「小王虎通吃与否」「棋盘大小」上说法不一，本作把有争议的部分做成了设置项，你们群里可以按自己那套约定来。</p>
-    <p class="note">牌面插画：切自你提供的那张「龍虎鬥遊戲牌」画片（第 15 张图上印的是「<b>良虎</b>」，而百科条目写作「白虎」；右下角还带有原图的「AI生成」水印）。不想看图就把设置里的「牌面用画片插画」取消，会切回文字牌面。</p>
+    <p class="note">牌面插画：默认用的是你提供的<b>动漫风格画片</b>（16 张按图上的牌号对号入座，第 3 张图上印「<b>金蛟</b>」、第 15 张印「<b>良虎</b>」，而百科条目写作「金龙」「白虎」——文字仍按条目）。想换回最早的「洋画片」那一套，见 README 的说明；不想看图就把设置里的「牌面用画片插画」取消，会切回文字牌面。</p>
     <p class="note">本页面为民间玩法复刻，仅供怀旧娱乐，请勿用于赌博。</p>
     <button class="close" id="btnCloseRules" type="button">知道了</button>
   </div>
@@ -989,7 +992,7 @@ function lhdSession(cfg){
   s.act = function(action){
     if(s.role === 'viewer') return { ok:false, error:'观战中不能操作' };
     if(s.role === 'guest'){
-      s.pending = { action:action, at:Date.now(), tries:1 };
+      s.pending = { action:action, at:Date.now(), tries:1, moves:(s.state ? s.state.moves : -1) };
       sendIntent(action);
       return { ok:true, pending:true };
     }
@@ -1061,7 +1064,15 @@ function lhdSession(cfg){
         s.seqSeen = m.sq;
       }
       var st2 = lhdRestore(m.st);
-      if(st2){ s.state = st2; s.pending = null; if(cfg.onState) cfg.onState(s.state); }
+      if(st2){
+        var wasPending = s.pending;
+        s.state = st2; s.pending = null;
+        if(cfg.onState) cfg.onState(s.state);
+        /* 自己刚发的那一步没生效（局面被房主刷新了）→ 明确让玩家再点一次，而不是静默吞掉 */
+        if(wasPending && st2.moves === wasPending.moves && cfg.onNotice){
+          cfg.onNotice('这一步没生效（局面刚被刷新），请再点一次');
+        }
+      }
       return;
     }
     if(m.t === 'reject' && m.to === s.id){ s.pending = null; if(cfg.onReject) cfg.onReject(); return; }
@@ -1126,7 +1137,7 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
   'use strict';
 
   var $ = function(id){ return document.getElementById(id); };
-  var boardEl = $('board'), logEl = $('log'), bannerEl = $('banner'), bannerText = $('bannerText'), hintEl = $('hint');
+  var boardEl = $('board'), boardWrap = document.querySelector('.boardwrap'), logEl = $('log'), bannerEl = $('banner'), bannerText = $('bannerText'), hintEl = $('hint');
 
   var state = null;      /* 当前对局 */
   var history = [];      /* 悔棋快照 */
@@ -1287,11 +1298,11 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
       bannerEl.classList.add('over');
       hintEl.textContent = '点「新开一局」再来一盘，或「悔棋」回到上一步。';
       if(state.over.draw){
-        bannerText.innerHTML = '🤝 <b>和棋</b> · ' + state.over.reason;
+        bannerText.innerHTML = '🤝 <b>和棋</b> · ' + esc(state.over.reason);
         return;
       }
       var w = state.over.winner;
-      bannerText.innerHTML = '🎉 <b>' + pname(state, w) + '（' + SIDES[playerSide(state, w)].cn + '）胜</b> · ' + state.over.reason;
+      bannerText.innerHTML = '🎉 <b>' + esc(pname(state, w)) + '（' + SIDES[playerSide(state, w)].cn + '）胜</b> · ' + esc(state.over.reason);
       return;
     }
     var side = playerSide(state, state.turn);
@@ -1301,7 +1312,8 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
       return;
     }
     bannerEl.classList.add(side === 'D' ? 'dragon' : 'tiger');
-    bannerText.innerHTML = '轮到 <b>' + pname(state, state.turn) + '（' + SIDES[side].cn + '）</b> · 第 ' + (state.moves + 1) + ' 手';
+    bannerText.innerHTML = '轮到 <b>' + esc(pname(state, state.turn)) + '（' + SIDES[side].cn + '）</b> · 第 ' + (state.moves + 1) + ' 手' +
+      (net.session ? (net.session.canAct() ? ' · <b>该你了</b>' : ' · 等对方') : '');
     var silence = (state.noCaptureLimit > 0 && state.sinceCapture > 0)
       ? '（已连续 ' + state.sinceCapture + ' 手无吃子，满 ' + state.noCaptureLimit + ' 手判和）'
       : '';
@@ -1324,9 +1336,11 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
     ['A','B'].forEach(function(p){
       var side = playerSide(state, p);
       var box = $(p === 'A' ? 'pA' : 'pB');
+      var isMe = !!net.session && ((net.role === 'host' && p === 'A') || (net.role === 'guest' && p === 'B'));
       box.className = 'pcard' + (side === 'D' ? ' dragon' : side === 'T' ? ' tiger' : '') +
-        (!state.over && state.turn === p ? ' active' : '');
-      $(p === 'A' ? 'nameA_lbl' : 'nameB_lbl').textContent = pname(state, p);
+        (!state.over && state.turn === p ? ' active' : '') + (isMe ? ' me' : '');
+      $(p === 'A' ? 'nameA_lbl' : 'nameB_lbl').innerHTML = esc(pname(state, p)) +
+        (isMe ? ' <span class="mebadge">我</span>' : '');
 
       var upCount = 0;
       for(var i = 0; i < state.total; i++){
@@ -1351,7 +1365,7 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
     var items = state.log.slice(-40).reverse();
     logEl.innerHTML = items.map(function(e){
       var cls = e.player === 'D' ? 'dragon' : e.player === 'T' ? 'tiger' : 'sys';
-      return '<li class="' + cls + '">' + e.text + '</li>';
+      return '<li class="' + cls + '">' + esc(e.text) + '</li>';
     }).join('');
   }
 
@@ -1378,9 +1392,20 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
   }
 
   /* ── 联机 ── */
-  var net = { mode:'local', role:null, room:null, secret:null, client:null, session:null, peers:[], status:'', notice:'' };
+  var net = { mode:'local', role:null, room:null, secret:null, client:null, session:null,
+              peers:[], status:'', notice:'', synced:false, connectStart:0, slowWarned:false };
 
-  function netMyName(){ return ($('inNetName').value || '玩家').slice(0, 8); }
+  function esc(s){
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){
+      return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c];
+    });
+  }
+  /* 没填昵称时按座位自动命名：房主=玩家1、对手=玩家2，避免两边都叫「玩家」分不清 */
+  function netMyName(){
+    var v = ($('inNetName').value || '').replace(/^\s+|\s+$/g, '');
+    if(v) return v.slice(0, 8);
+    return (net.role === 'guest') ? '玩家2' : '玩家1';
+  }
 
   function netRender(){
     var online = !!net.session;
@@ -1399,7 +1424,7 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
       if(net.role === 'viewer'){
         $('netOpp').innerHTML = '<span class="on">观战中</span> · 只能看不能动';
       } else if(opp){
-        $('netOpp').innerHTML = opp.name + (opp.online ? ' <span class="on">在线</span>' : ' <span class="off">掉线</span>');
+        $('netOpp').innerHTML = esc(opp.name) + (opp.online ? ' <span class="on">在线</span>' : ' <span class="off">掉线</span>');
       } else {
         $('netOpp').textContent = (net.role === 'host') ? '等待对手加入…' : '等待房主…';
       }
@@ -1407,10 +1432,30 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
     $('rowViewers').hidden = viewers === 0;
     $('netViewers').textContent = viewers + ' 人';
     $('roomNotice').textContent = net.notice || '';
+
+    /* 客人/观众刚进房还没拿到房主局面：把棋盘变灰并明确提示，别让人以为是自己点不动 */
+    var syncing = online && !net.synced;
+    if(boardWrap) boardWrap.classList.toggle('syncing', syncing);
+    if(syncing){
+      bannerText.innerHTML = '<b>正在同步房主的局面…</b>';
+      hintEl.textContent = '已进房，正在等房主把牌桌发过来（连不上会给出提示）';
+    }
+    /* 10 秒还没连上中继：直接说明原因和办法，而不是让人对着棋盘干点 */
+    if(online && net.client && !net.client.connected && Date.now() - net.connectStart > 10000){
+      net.slowWarned = true;
+    }
+    if(net.slowWarned && online && net.client && !net.client.connected){
+      $('roomNotice').textContent = '⚠ 连不上公共中继（可能被网络/防火墙限制）：换个网络，或点右上角「在浏览器中打开」重试';
+    }
     var lock = online && net.role !== 'host';
-    ['selSize','chkDiag','chkTiger','selKing','selDraw','inNameA','inNameB'].forEach(function(id){
+    ['selSize','chkDiag','chkTiger','selKing','selDraw'].forEach(function(id){
       var el = $(id);
       if(el) el.disabled = lock;
+    });
+    /* 联机时的昵称来自「我的昵称」，本地那两个昵称框一律锁住，避免两边都叫「玩家2」 */
+    ['inNameA','inNameB'].forEach(function(id){
+      var el = $(id);
+      if(el) el.disabled = online;
     });
     updateButtons();
   }
@@ -1432,6 +1477,7 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
     state = st;               /* 房主：就是同一个权威对象；客人/观众：房主发来的快照 */
     history = [];             /* 联机不悔棋 */
     sel = null;
+    net.synced = true;
     /* 用一句人话告诉玩家现在该干嘛 —— 联机没有「开始」按钮，进房即开始 */
     var mine = net.session ? net.session.canAct() : false;
     if(net.role === 'viewer'){
@@ -1471,6 +1517,13 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
       onRole: function(r){ net.role = r; netRender(); },
       onReject: function(){ net.notice = '房主判定这一步不合法（局面已自动校准）'; netRender(); }
     });
+    net.connectStart = Date.now();
+    net.slowWarned = false;
+    if(net.mode === 'host'){
+      /* 关键：房主的权威局面立刻交给会话，不必等连上中继 —— 否则没连上时一步都走不了 */
+      net.session.hostInit(state);
+      net.synced = true;
+    }
     net.client.connect([topic]);
     netRender();
   }
@@ -1482,6 +1535,7 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
     net.secret = lhdDeriveSecret(net.room);
     state = createGame(settings());
     state.names.A = netMyName();
+    state.names.B = '等待对手';              /* 对手一进来就换成他的昵称 */
     history = []; sel = null;
     net.notice = '把房间号发给对手，他输入后即可进来（也可以先自己翻牌）';
     netConnect();
@@ -1494,8 +1548,10 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
     netTeardown(true);
     net.mode = 'join'; net.role = 'guest';
     net.room = code; net.secret = lhdDeriveSecret(code);
+    net.synced = false;
     net.notice = '正在进入 ' + code + ' …';
     history = []; sel = null;
+    render();                                 /* 先刷新，让昵称按「玩家2」定下来 */
     netConnect();
     render();
   }
@@ -1581,7 +1637,14 @@ var CARD_RATIO = /*==ART_RATIO==*/0.6416;
     net.notice = '房间号：' + text;
     netRender();
   });
-  setInterval(function(){ if(net.session) net.session.tick(); }, 1000);
+  setInterval(function(){
+    if(!net.session) return;
+    net.session.tick();
+    if(!net.slowWarned && net.client && !net.client.connected && Date.now() - net.connectStart > 10000){
+      net.slowWarned = true;
+      netRender();
+    }
+  }, 1000);
   window.addEventListener('beforeunload', function(){
     if(net.session){ try { net.session.leave(); } catch(e){} }
   });
